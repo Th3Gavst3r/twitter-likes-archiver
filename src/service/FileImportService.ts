@@ -4,7 +4,7 @@ import { createHash } from 'crypto';
 import { PassThrough } from 'stream';
 import { temporaryFile } from 'tempy';
 import { createWriteStream } from 'fs';
-import { copyFile, mkdir, stat, unlink } from 'fs/promises';
+import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises';
 import path from 'path';
 import { fileTypeFromBuffer } from 'file-type';
 import logger from '../logger';
@@ -103,12 +103,18 @@ export default class FileImportService {
       clientFilesDir,
       `${hash.toString('hex')}.${fileType.ext}`
     );
+
     logger.debug(
       `Transferring temporary file ${tempFile} to permanent storage at ${file}`
     );
     await mkdir(clientFilesDir, { recursive: true });
-    await copyFile(tempFile, file);
-    await unlink(tempFile);
+    try {
+      await rename(tempFile, file);
+    } catch (e) {
+      logger.debug(`File rename failed, falling back to copy. Cause: ${e}`);
+      await copyFile(tempFile, file);
+      await unlink(tempFile);
+    }
 
     // Save the file metadata
     logger.debug(`Saving database record for ${hash}`);
