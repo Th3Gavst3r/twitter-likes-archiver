@@ -1,0 +1,55 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model TwitterUser {
+  id           String         @id
+  name         String
+  username     String
+  created_at   DateTime
+  tweets       TwitterTweet[]
+  liked_tweets TwitterTweet[] @relation("Likes")
+}
+
+model TwitterTweet {
+  id           String         @id
+  text         String
+  created_at   DateTime
+  author       TwitterUser    @relation(fields: [author_id], references: [id])
+  author_id    String
+  media        TwitterMedia[]
+  liking_users TwitterUser[]  @relation("Likes")
+}
+
+model TwitterMedia {
+  media_key String       @id
+  type      String
+  url       String
+  tweet     TwitterTweet @relation(fields: [tweet_id], references: [id])
+  tweet_id  String
+  file      LocalFile    @relation(fields: [file_id], references: [sha256])
+  file_id   Bytes
+}
+
+model LocalFile {
+  sha256     Bytes          @id
+  created_at DateTime
+  size       Int
+  mime       Mime           @relation(fields: [mime_id], references: [id])
+  media      TwitterMedia[]
+  mime_id    Int
+}
+
+model Mime {
+  id    Int         @id @default(autoincrement())
+  name  String      @unique
+  files LocalFile[]
+}

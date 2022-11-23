@@ -1,0 +1,130 @@
+import { LocalFile, PrismaClient } from '@prisma/client';
+import fetch from 'node-fetch';
+import { createHash } from 'crypto';
+import { PassThrough } from 'stream';
+import { temporaryFile } from 'tempy';
+import { createWriteStream } from 'fs';
+import { copyFile, mkdir, stat, unlink } from 'fs/promises';
+import path from 'path';
+import { fileTypeFromBuffer } from 'file-type';
+import logger from '../logger';
+
+export default class FileImportService {
+  constructor(private readonly prisma: PrismaClient) {}
+
+  /**
+   * Downloads content from a given URL and saves it to disk using the SHA256
+   * hash of the content for the filename.
+   * @param url URL to download.
+   * @returns A database record for the created file.
+   */
+  public async download(url: string): Promise<LocalFile> {
+    // If we've already downloaded this url before, return the existing file
+    const existingMedia = await this.prisma.twitterMedia.findFirst({
+      where: { url },
+    });
+    if (existingMedia) {
+      logger.info(`Downloaded file already exists for ${url}`);
+      return this.prisma.localFile.findUniqueOrThrow({
+        where: { sha256: existingMedia.file_id },
+      });
+    }
+
+    // Begin the download
+    logger.info(`Downloading content from ${url}`);
+    const response = await fetch(url);
+    if (!response.body) {
+      throw new Error(`Response for ${url} did not contain a body`);
+    }
+    const body = response.body;
+
+    // Calculate the SHA256 hash of the response stream
+    const hashPromise = new Promise<Buffer>((resolve, reject) => {
+      const hasher = createHash('sha256');
+
+      const hashStream = new PassThrough();
+      hashStream.on('end', () => {
+        hasher.end();
+        const hash = hasher.read();
+        logger.debug(
+          `Calculated hash for content at ${url} is ${hash.toString('hex')}`
+        );
+        resolve(hash);
+      });
+      hashStream.on('error', reject);
+
+      hashStream.pipe(hasher);
+      body.pipe(hashStream);
+    });
+
+    // Save the data to a temporary location while the hash is calculated
+    const filePromise = new Promise<string>((resolve, reject) => {
+      const tempPath = temporaryFile();
+
+      const fileStream = createWriteStream(tempPath);
+      fileStream.on('finish', () => {
+        logger.debug(
+          `Response from ${url} has been saved to temporary file: ${tempFile}`
+        );
+        resolve(tempPath);
+      });
+      fileStream.on('error', reject);
+
+      body.pipe(fileStream);
+    });
+
+    // Determine the file type of the content
+    const fileTypePromise = response.arrayBuffer().then(fileTypeFromBuffer);
+
+    logger.debug(`Awaiting completion of content processing steps for ${url}`);
+    const tempFile = await filePromise;
+    const hash = await hashPromise;
+    const fileType = (await fileTypePromise) || {
+      ext: 'bin',
+      mime: 'application/octet-stream',
+    };
+    const stats = await stat(tempFile);
+
+    // Use a foreign relation to improve lookup times
+    logger.debug(`Creating mime record for ${fileType.mime}`);
+    const mimeType = await this.prisma.mime.upsert({
+      where: {
+        name: fileType.mime,
+      },
+      update: {},
+      create: {
+        name: fileType.mime,
+      },
+    });
+
+    // Move the file out of temporary storage
+    const clientFilesDir = path.resolve('db', 'client_files');
+    const file = path.resolve(
+      clientFilesDir,
+      `${hash.toString('hex')}.${fileType.ext}`
+    );
+    logger.debug(
+      `Transferring temporary file ${tempFile} to permanent storage at ${file}`
+    );
+    await mkdir(clientFilesDir, { recursive: true });
+    await copyFile(tempFile, file);
+    await unlink(tempFile);
+
+    // Save the file metadata
+    logger.debug(`Saving database record for ${hash}`);
+    return this.prisma.localFile.upsert({
+      where: { sha256: hash },
+      update: {
+        created_at: stats.ctime,
+        size: stats.size,
+        mime_id: mimeType.id,
+      },
+      create: {
+        sha256: hash,
+        created_at: stats.ctime,
+        size: stats.size,
+        mime_id: mimeType.id,
+      },
+    });
+  }
+}
