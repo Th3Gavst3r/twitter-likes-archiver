@@ -68,127 +68,127 @@ export default class TwitterService {
    * @param userId A Twitter ID string.
    * @returns A pageable list of tweets.
    */
-  public async usersIdLikeTweets(
+  public async *usersIdLikeTweets(
     userId: string
-  ): Promise<
+  ): AsyncGenerator<
     { tweets: Tweet[] } & Pick<
       components['schemas']['Get2UsersIdLikedTweetsResponse'],
       'meta'
     >
   > {
     logger.debug(`Finding liked tweets for user ${userId}`);
-    const likesResult: TwitterResponse<usersIdLikedTweets> =
-      await this.client.tweets.usersIdLikedTweets(userId, {
+
+    for await (const likesResult of this.client.tweets.usersIdLikedTweets(
+      userId,
+      {
         expansions: ['author_id', 'attachments.media_keys'],
         'tweet.fields': ['id', 'text', 'created_at', 'author_id'],
         'user.fields': ['id', 'name', 'username', 'created_at'],
         'media.fields': ['media_key', 'type', 'url', 'variants'],
-      });
-    if (likesResult.errors && likesResult.errors.length > 0) {
-      const message = likesResult.errors
-        .map(e => e.title + (e.detail ? `: ${e.detail}` : ''))
-        .join('\n');
-      throw new Error(message);
-    }
-
-    /* Validate that optional fields have been populated correctly */
-    const requiredResultKeys = ['data', 'includes', 'meta'] as const;
-    if (!checkFields(likesResult, ...requiredResultKeys)) {
-      const missingKeys = requiredResultKeys.filter(k => !likesResult[k]);
-      throw new Error(
-        `Likes result for ${userId} is missing the following required keys: ${JSON.stringify(
-          missingKeys
-        )}`
-      );
-    }
-
-    const requiredTweetKeys = ['author_id', 'created_at'] as const;
-    if (!checkElementsForFields(likesResult.data, ...requiredTweetKeys)) {
-      const malformedTweets = likesResult.data.filter(
-        e => !checkFields(e, ...requiredTweetKeys)
-      );
-      throw new Error(
-        `Likes result for ${userId} contains the following malformed tweets: ${JSON.stringify(
-          malformedTweets
-        )}`
-      );
-    }
-
-    const requiredIncludesKeys = ['users'] as const;
-    if (!checkFields(likesResult.includes, ...requiredIncludesKeys)) {
-      const missingKeys = requiredIncludesKeys.filter(
-        k => !likesResult.includes[k]
-      );
-      throw new Error(
-        `Likes result for ${userId} is missing the following required keys: ${JSON.stringify(
-          missingKeys
-        )}`
-      );
-    }
-
-    const requiredUserKeys = ['created_at'] as const;
-    if (
-      !checkElementsForField(likesResult.includes.users, ...requiredUserKeys)
-    ) {
-      const malformedUsers = likesResult.includes.users.filter(
-        e => !checkFields(e, ...requiredUserKeys)
-      );
-      throw new Error(
-        `Likes result for ${userId} contains the following malformed users: ${JSON.stringify(
-          malformedUsers
-        )}`
-      );
-    }
-
-    /* Transform raw API response into our local model */
-    const transformedTweets: Tweet[] = [];
-    const errors: Error[] = [];
-    for (const tweet of likesResult.data) {
-      try {
-        const author = this.mapAuthorToTweet(
-          tweet,
-          likesResult.includes.users || []
+      }
+    )) {
+      /* Validate that optional fields have been populated correctly */
+      const requiredResultKeys = ['data', 'includes', 'meta'] as const;
+      if (!checkFields(likesResult, ...requiredResultKeys)) {
+        const missingKeys = requiredResultKeys.filter(k => !likesResult[k]);
+        throw new Error(
+          `Likes result for ${userId} is missing the following required keys: ${JSON.stringify(
+            missingKeys
+          )}`
         );
+      }
 
-        let media: Media[] = [];
-        if (
-          checkField(tweet, 'attachments') &&
-          checkField(tweet.attachments, 'media_keys')
-        ) {
-          media = this.mapMediaToTweet(tweet, likesResult.includes.media || []);
-        } else {
-          logger.debug(
-            `Tweet ${tweet.id} has no property attachments.media_keys`
+      const requiredTweetKeys = ['author_id', 'created_at'] as const;
+      if (!checkElementsForFields(likesResult.data, ...requiredTweetKeys)) {
+        const malformedTweets = likesResult.data.filter(
+          e => !checkFields(e, ...requiredTweetKeys)
+        );
+        throw new Error(
+          `Likes result for ${userId} contains the following malformed tweets: ${JSON.stringify(
+            malformedTweets
+          )}`
+        );
+      }
+
+      const requiredIncludesKeys = ['users'] as const;
+      if (!checkFields(likesResult.includes, ...requiredIncludesKeys)) {
+        const missingKeys = requiredIncludesKeys.filter(
+          k => !likesResult.includes[k]
+        );
+        throw new Error(
+          `Likes result for ${userId} is missing the following required keys: ${JSON.stringify(
+            missingKeys
+          )}`
+        );
+      }
+
+      const requiredUserKeys = ['created_at'] as const;
+      if (
+        !checkElementsForField(likesResult.includes.users, ...requiredUserKeys)
+      ) {
+        const malformedUsers = likesResult.includes.users.filter(
+          e => !checkFields(e, ...requiredUserKeys)
+        );
+        throw new Error(
+          `Likes result for ${userId} contains the following malformed users: ${JSON.stringify(
+            malformedUsers
+          )}`
+        );
+      }
+
+      /* Transform raw API response into our local model */
+      const transformedTweets: Tweet[] = [];
+      const errors: Error[] = [];
+      for (const tweet of likesResult.data) {
+        try {
+          const author = this.mapAuthorToTweet(
+            tweet,
+            likesResult.includes.users || []
           );
-        }
 
-        transformedTweets.push({
-          ...tweet,
-          author,
-          media,
-          created_at: new Date(tweet.created_at),
-        });
-      } catch (e) {
-        if (e instanceof Error) {
-          errors.push(e);
-        } else {
-          errors.push(new Error(JSON.stringify(e)));
+          let media: Media[] = [];
+          if (
+            checkField(tweet, 'attachments') &&
+            checkField(tweet.attachments, 'media_keys')
+          ) {
+            media = this.mapMediaToTweet(
+              tweet,
+              likesResult.includes.media || []
+            );
+          } else {
+            logger.debug(
+              `Tweet ${tweet.id} has no property attachments.media_keys`
+            );
+          }
+
+          transformedTweets.push({
+            ...tweet,
+            author,
+            media,
+            created_at: new Date(tweet.created_at),
+          });
+        } catch (e) {
+          if (e instanceof Error) {
+            errors.push(e);
+          } else {
+            errors.push(new Error(JSON.stringify(e)));
+          }
         }
       }
-    }
 
-    if (errors.length > 0) {
-      throw new Error(
-        `Tweet response contained the following errors:\n${errors
-          .map(e => e.message)
-          .join('\n')}`
+      if (errors.length > 0) {
+        throw new Error(
+          `Tweet response contained the following errors:\n${errors
+            .map(e => e.message)
+            .join('\n')}`
+        );
+      }
+
+      logger.debug(
+        `Located ${transformedTweets.length} liked tweets for user ${userId}`
       );
+      yield { tweets: transformedTweets, meta: likesResult.meta };
     }
-
-    logger.debug(
-      `Located ${transformedTweets.length} liked tweets for user ${userId}`
-    );
-    return { tweets: transformedTweets, meta: likesResult.meta };
   }
 
   private mapAuthorToTweet(
