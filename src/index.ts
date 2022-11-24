@@ -1,8 +1,9 @@
-import { Prisma, PrismaClient, TwitterMedia } from '@prisma/client';
+import { PrismaClient, TwitterMedia } from '@prisma/client';
 import { Client } from 'twitter-api-sdk';
 import logger from './logger';
 import TwitterService from './service/TwitterService';
-import FileImportService from './service/FileImportService';
+import FileImporter from './importer/FileImporter';
+import TwitterImporter from './importer/TwitterImporter';
 import { getEnvironmentVariableOrThrow } from './util/Validation';
 
 const prisma = new PrismaClient();
@@ -10,7 +11,8 @@ const prisma = new PrismaClient();
 const twitterClient = new Client(getEnvironmentVariableOrThrow('BEARER_TOKEN'));
 
 const twitterService = new TwitterService(twitterClient);
-const fileImportService = new FileImportService(prisma);
+const fileImporter = new FileImporter(prisma);
+const twitterImporter = new TwitterImporter(prisma, fileImporter);
 
 async function main() {
   const username = getEnvironmentVariableOrThrow('USERNAME');
@@ -19,60 +21,9 @@ async function main() {
 
   for await (const page of twitterService.usersIdLikeTweets(user.id)) {
     for (const tweet of page.tweets) {
-      if (await prisma.twitterTweet.findUnique({ where: { id: tweet.id } })) {
-        logger.info(`Tweet ${tweet.id} already exists`);
-        continue;
-      }
-
       logger.info(`Importing tweet ${tweet.id}`);
-
-      const media: TwitterMedia[] = [];
-      for (const mediaItem of tweet.media) {
-        const file = await fileImportService.download(mediaItem.url);
-        media.push({
-          ...mediaItem,
-          url: mediaItem.url,
-          tweet_id: tweet.id,
-          file_id: file.sha256,
-        });
-      }
-
-      logger.debug(`Creating database record for tweet ${tweet.id}`);
-      const localTweet = await prisma.twitterTweet.create({
-        data: {
-          id: tweet.id,
-          text: tweet.text,
-          created_at: tweet.created_at,
-          author: {
-            connectOrCreate: {
-              where: { id: tweet.author.id },
-              create: tweet.author,
-            },
-          },
-          media: {
-            connectOrCreate: media.map(
-              (m): Prisma.TwitterMediaCreateOrConnectWithoutTweetInput => {
-                return {
-                  where: { media_key: m.media_key },
-                  create: {
-                    media_key: m.media_key,
-                    type: m.type,
-                    url: m.url,
-                    file: {
-                      connect: { sha256: m.file_id },
-                    },
-                  },
-                };
-              }
-            ),
-          },
-          liking_users: {
-            connectOrCreate: { where: { id: user.id }, create: user },
-          },
-        },
-      });
-
-      logger.info(`Created tweet: ${JSON.stringify(localTweet)}`);
+      const localTweet = await twitterImporter.importTweet(tweet);
+      await twitterImporter.createLike(localTweet, user);
     }
   }
 }
