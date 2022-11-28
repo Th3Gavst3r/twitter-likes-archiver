@@ -1,10 +1,11 @@
-import { PrismaClient, TwitterMedia } from '@prisma/client';
+import { PrismaClient } from '@prisma/client';
 import { Client } from 'twitter-api-sdk';
 import logger from './logger';
 import TwitterService from './service/TwitterService';
+import { getEnvironmentVariableOrThrow } from './util/Validation';
+import JobManager, { JobType } from './importer/JobManager';
 import FileImporter from './importer/FileImporter';
 import TwitterImporter from './importer/TwitterImporter';
-import { getEnvironmentVariableOrThrow } from './util/Validation';
 
 const prisma = new PrismaClient();
 
@@ -12,20 +13,35 @@ const twitterClient = new Client(getEnvironmentVariableOrThrow('BEARER_TOKEN'));
 
 const twitterService = new TwitterService(twitterClient);
 const fileImporter = new FileImporter(prisma);
-const twitterImporter = new TwitterImporter(prisma, fileImporter);
+const twitterImporter = new TwitterImporter(prisma);
+const jobManager = new JobManager(
+  prisma,
+  twitterService,
+  fileImporter,
+  twitterImporter
+);
 
 async function main() {
   const username = getEnvironmentVariableOrThrow('USERNAME');
 
   const user = await twitterService.findUserByUsername(username);
 
-  for await (const page of twitterService.usersIdLikeTweets(user.id)) {
-    for (const tweet of page.tweets) {
-      logger.info(`Importing tweet ${tweet.id}`);
-      const localTweet = await twitterImporter.importTweet(tweet);
-      await twitterImporter.createLike(localTweet, user);
-    }
+  // Finish incomplete jobs first
+  const deferredDownloadJobs = await jobManager.getDeferredJobs(
+    user,
+    JobType.USER_LIKES_DOWNLOAD
+  );
+  for (const job of deferredDownloadJobs) {
+    logger.info(
+      `Resuming deferred ${job.type} job for user ${job.twitter_user_id}, which was created at ${job.created_at}`
+    );
+    await jobManager.downloadUserLikesJob(job);
   }
+
+  // Download new likes
+  logger.info(`Downloading new likes for user ${user.id}`);
+  const freshJob = await jobManager.issueJob(user, JobType.USER_LIKES_DOWNLOAD);
+  await jobManager.downloadUserLikesJob(freshJob);
 }
 
 main()

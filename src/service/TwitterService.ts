@@ -1,10 +1,6 @@
 import { Prisma, TwitterMedia, TwitterUser } from '@prisma/client';
 import { Client, types } from 'twitter-api-sdk';
-import {
-  components,
-  TwitterResponse,
-  usersIdLikedTweets,
-} from 'twitter-api-sdk/dist/types';
+import { components } from 'twitter-api-sdk/dist/types';
 import {
   checkElementsForField,
   checkElementsForFields,
@@ -14,15 +10,15 @@ import {
 } from '../util/Validation';
 import logger from '../logger';
 
-type Media = Omit<TwitterMedia, 'tweet_id' | 'file_id'>;
+export type Media = Omit<TwitterMedia, 'tweet_id' | 'file_id'>;
 
-type Tweet = Prisma.TwitterTweetGetPayload<{
+export type Tweet = Prisma.TwitterTweetGetPayload<{
   include: { author: true };
 }> & { media: Media[] };
 
 /**
- * Wrapper around the Twitter SDKto perform response validation and
- * convert raw API responses into more useful objects.
+ * Wrapper around the Twitter SDK which performs response validation and
+ * convert raw API responses into more useful local objects.
  */
 export default class TwitterService {
   constructor(private readonly client: Client) {}
@@ -30,7 +26,7 @@ export default class TwitterService {
   /**
    * Look up a user's Twitter ID by their username.
    * @param username A username.
-   * @returns A Twitter ID string.
+   * @returns The corresponding TwitterUser.
    */
   public async findUserByUsername(username: string): Promise<TwitterUser> {
     logger.debug(`Finding Twitter user by username ${username}`);
@@ -65,11 +61,12 @@ export default class TwitterService {
 
   /**
    * Gets information about a user's liked tweets.
-   * @param userId A Twitter ID string.
+   * @param userId A Twitter user ID.
    * @returns A pageable list of tweets.
    */
   public async *usersIdLikeTweets(
-    userId: string
+    userId: string,
+    pagination_token?: string
   ): AsyncGenerator<
     { tweets: Tweet[] } & Pick<
       components['schemas']['Get2UsersIdLikedTweetsResponse'],
@@ -85,8 +82,13 @@ export default class TwitterService {
         'tweet.fields': ['id', 'text', 'created_at', 'author_id'],
         'user.fields': ['id', 'name', 'username', 'created_at'],
         'media.fields': ['media_key', 'type', 'url', 'variants'],
+        pagination_token,
       }
     )) {
+      if (likesResult.meta?.result_count === 0) {
+        return [];
+      }
+
       /* Validate that optional fields have been populated correctly */
       const requiredResultKeys = ['data', 'includes', 'meta'] as const;
       if (!checkFields(likesResult, ...requiredResultKeys)) {
@@ -191,6 +193,13 @@ export default class TwitterService {
     }
   }
 
+  /**
+   * Pulls expanded author information out of an API response's `include`
+   * section.
+   * @param tweet The tweet whose author will be expanded.
+   * @param users The list of expanded users from the API's `include` section.
+   * @returns The tweet's author.
+   */
   private mapAuthorToTweet(
     tweet: MakeRequired<
       components['schemas']['Tweet'],
@@ -211,6 +220,13 @@ export default class TwitterService {
     };
   }
 
+  /**
+   * Pulls expanded media information out of an API response's `include`
+   * section.
+   * @param tweet The tweet whose media attachments will be expanded.
+   * @param media The list of expanded media from the API's `include` section.
+   * @returns A list of media items which are attached to the given tweet.
+   */
   private mapMediaToTweet(
     tweet: MakeRequired<components['schemas']['Tweet'], 'attachments'>,
     media: components['schemas']['Media'][]

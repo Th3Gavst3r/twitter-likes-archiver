@@ -1,4 +1,4 @@
-import { LocalFile, PrismaClient } from '@prisma/client';
+import { LocalFile, PrismaClient, PrismaPromise } from '@prisma/client';
 import fetch from 'node-fetch';
 import { createHash } from 'crypto';
 import { PassThrough } from 'stream';
@@ -9,25 +9,34 @@ import path from 'path';
 import { fileTypeFromBuffer } from 'file-type';
 import logger from '../logger';
 
-export default class FileImportService {
+export default class FileImporter {
   constructor(private readonly prisma: PrismaClient) {}
 
   /**
-   * Downloads content from a given URL and saves it to disk using the SHA256
+   * Downloads content from a given URL and saves it to disk, using the SHA256
    * hash of the content for the filename.
    * @param url URL to download.
    * @returns A database record for the created file.
    */
-  public async download(url: string): Promise<LocalFile> {
+  public async download(url: string): Promise<PrismaPromise<LocalFile>> {
     // If we've already downloaded this url before, return the existing file
     const existingMedia = await this.prisma.twitterMedia.findFirst({
       where: { url },
     });
     if (existingMedia) {
-      logger.info(`Downloaded file already exists for ${url}`);
-      return this.prisma.localFile.findUniqueOrThrow({
+      logger.debug(`Media record already exists for ${url}`);
+
+      const localFile = await this.prisma.localFile.findUnique({
         where: { sha256: existingMedia.file_id },
       });
+
+      if (localFile) {
+        return localFile;
+      } else {
+        logger.warn(
+          `Media record exists for ${url}, but there is no associated file. Downloading again`
+        );
+      }
     }
 
     // Begin the download
@@ -64,7 +73,7 @@ export default class FileImportService {
       const fileStream = createWriteStream(tempPath);
       fileStream.on('finish', () => {
         logger.debug(
-          `Response from ${url} has been saved to temporary file: ${tempFile}`
+          `Response from ${url} has been saved to temporary file: ${tempPath}`
         );
         resolve(tempPath);
       });

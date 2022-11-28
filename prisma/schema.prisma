@@ -17,6 +17,7 @@ model TwitterUser {
   created_at   DateTime
   tweets       TwitterTweet[]
   liked_tweets TwitterTweet[] @relation("Likes")
+  jobs         Job[]
 }
 
 model TwitterTweet {
@@ -52,4 +53,16 @@ model Mime {
   id    Int         @id @default(autoincrement())
   name  String      @unique
   files LocalFile[]
+}
+
+// Tracks progress of different file import tasks
+model Job {
+  user             TwitterUser @relation(fields: [twitter_user_id], references: [id])
+  twitter_user_id  String
+  type             String
+  created_at       DateTime    @default(now())
+  updated_at       DateTime    @updatedAt
+  pagination_token String?
+
+  @@id([twitter_user_id, type, created_at])
 }
