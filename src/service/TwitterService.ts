@@ -21,6 +21,8 @@ export type Tweet = Prisma.TwitterTweetGetPayload<{
  * convert raw API responses into more useful local objects.
  */
 export default class TwitterService {
+  private readonly MAX_RETRIES = 3;
+
   constructor(private readonly client: Client) {}
 
   /**
@@ -34,6 +36,9 @@ export default class TwitterService {
       username,
       {
         'user.fields': ['created_at'],
+      },
+      {
+        max_retries: this.MAX_RETRIES,
       }
     );
     if (usernameResult.errors && usernameResult.errors.length > 0) {
@@ -64,7 +69,7 @@ export default class TwitterService {
    * @param userId A Twitter user ID.
    * @returns A pageable list of tweets.
    */
-  public async *usersIdLikeTweets(
+  public async *usersIdLikedTweets(
     userId: string,
     pagination_token?: string
   ): AsyncGenerator<
@@ -83,7 +88,8 @@ export default class TwitterService {
         'user.fields': ['id', 'name', 'username', 'created_at'],
         'media.fields': ['media_key', 'type', 'url', 'variants'],
         pagination_token,
-      }
+      },
+      { max_retries: this.MAX_RETRIES }
     )) {
       if (likesResult.meta?.result_count === 0) {
         return [];

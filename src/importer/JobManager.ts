@@ -86,7 +86,7 @@ export default class JobManager {
    * @param job The database record tracking this Job's progress.
    */
   public async downloadUserLikesJob(job: JobWithUser) {
-    for await (const page of this.twitterService.usersIdLikeTweets(
+    for await (const page of this.twitterService.usersIdLikedTweets(
       job.twitter_user_id,
       job.pagination_token || undefined
     )) {
