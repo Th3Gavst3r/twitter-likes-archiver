@@ -90,6 +90,21 @@ export default class JobManager {
       job.twitter_user_id,
       job.pagination_token || undefined
     )) {
+      const numExisting = await this.prisma.twitterLike.count({
+        where: {
+          user_id: job.twitter_user_id,
+          tweet_id: {
+            in: page.tweets.map(t => t.id),
+          },
+        },
+      });
+      if (numExisting === page.tweets.length) {
+        logger.info(
+          `All likes have been seen. Ending downloads early because we're caught up.`
+        );
+        break;
+      }
+
       // Construct media relations outside of primary transaction due to
       // timeout limitations of Prisma's interactive transactions
       const tweetIdToMediaMap = new Map<string, TwitterMedia[]>();
@@ -127,7 +142,7 @@ export default class JobManager {
         likedTweetIds.push(tweet.id);
       }
       transaction.push(
-        this.twitterImporter.createLikes(job.user, likedTweetIds)
+        ...this.twitterImporter.createLikes(job.user, likedTweetIds)
       );
 
       // Save this job's progress in case the next page is interrupted

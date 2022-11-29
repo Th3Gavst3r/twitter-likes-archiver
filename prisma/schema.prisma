@@ -16,7 +16,7 @@ model TwitterUser {
   username     String
   created_at   DateTime
   tweets       TwitterTweet[]
-  liked_tweets TwitterTweet[] @relation("Likes")
+  liked_tweets TwitterLike[]
   jobs         Job[]
 }
 
@@ -27,7 +27,17 @@ model TwitterTweet {
   author       TwitterUser    @relation(fields: [author_id], references: [id])
   author_id    String
   media        TwitterMedia[]
-  liking_users TwitterUser[]  @relation("Likes")
+  liking_users TwitterLike[]
+}
+
+model TwitterLike {
+  user       TwitterUser  @relation(fields: [user_id], references: [id])
+  user_id    String
+  tweet      TwitterTweet @relation(fields: [tweet_id], references: [id])
+  tweet_id   String
+  created_at DateTime     @default(now())
+
+  @@id([user_id, tweet_id])
 }
 
 model TwitterMedia {

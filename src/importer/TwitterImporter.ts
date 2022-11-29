@@ -2,6 +2,7 @@ import {
   Prisma,
   PrismaClient,
   PrismaPromise,
+  TwitterLike,
   TwitterMedia,
   TwitterTweet,
   TwitterUser,
@@ -67,31 +68,25 @@ export default class TwitterImporter {
   }
 
   /**
-   * Creates a set of Like relationship in the client database.
+   * Creates a set of TwitterLikes in the client database.
    * @param user The user who liked this tweet.
-   * @param tweetIds The tweets which were liked.
-   * @returns The resulting TwitterUser record.
+   * @param tweetIds The IDs of the tweets which were liked.
+   * @returns The resulting TwitterLike records.
    */
   public createLikes(
     user: TwitterUser,
     tweetIds: string[]
-  ): PrismaPromise<TwitterUser> {
+  ): PrismaPromise<TwitterLike>[] {
     logger.debug(
       `Creating like records between user ${user.id} and ${tweetIds.length} tweets`
     );
-    return this.prisma.twitterUser.update({
-      where: {
-        id: user.id,
-      },
-      data: {
-        liked_tweets: {
-          connect: tweetIds.map(id => {
-            return {
-              id,
-            };
-          }),
-        },
-      },
-    });
+
+    return tweetIds.map(tweetId =>
+      this.prisma.twitterLike.upsert({
+        where: { user_id_tweet_id: { user_id: user.id, tweet_id: tweetId } },
+        create: { user_id: user.id, tweet_id: tweetId },
+        update: {},
+      })
+    );
   }
 }
