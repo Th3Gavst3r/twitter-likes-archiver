@@ -18,7 +18,7 @@ export type Tweet = Prisma.TwitterTweetGetPayload<{
 
 /**
  * Wrapper around the Twitter SDK which performs response validation and
- * convert raw API responses into more useful local objects.
+ * converts raw API responses into more useful local objects.
  */
 export default class TwitterService {
   private readonly MAX_RETRIES = 3;
@@ -32,6 +32,7 @@ export default class TwitterService {
    */
   public async findUserByUsername(username: string): Promise<TwitterUser> {
     logger.debug(`Finding Twitter user by username ${username}`);
+
     const usernameResult = await this.client.users.findUserByUsername(
       username,
       {

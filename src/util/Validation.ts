@@ -6,7 +6,7 @@ export function getEnvironmentVariableOrThrow(name: string): string {
 // https://stackoverflow.com/questions/52127082/ensure-existance-of-optional-property-in-typescript-interface
 /**
  * Returns a type MakeRequired<T, K> which extends T.
- * This subtype removes the optional property from field K on type T .
+ * This subtype removes the optional property from field K on type T.
  */
 export type MakeRequired<T, K extends keyof T> = Pick<
   T,

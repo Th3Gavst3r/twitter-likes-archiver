@@ -60,7 +60,7 @@ export default class JobManager {
    * Finds all existing Jobs which have not yet been completed and deleted.
    * @param user User whose Jobs will be found.
    * @param type The type of Job to look for.
-   * @returns A list of existing Job records with the given User and Type.
+   * @returns A list of existing Job records with the given `user` and `type`.
    */
   public getDeferredJobs(
     user: TwitterUser,
@@ -167,7 +167,7 @@ export default class JobManager {
   /**
    * Downloads files for a tweet's attached media.
    * Only creates LocalFile records in the client database,
-   * not TwitterTweets or TwitterMedia
+   * not TwitterTweets or TwitterMedia.
    * @param tweets List of tweets whose media we should download.
    * @returns A map from tweet ID to insertable media records for the
    * downloaded files.
