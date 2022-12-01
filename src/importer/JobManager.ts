@@ -5,7 +5,7 @@ import {
   TwitterMedia,
   TwitterUser,
 } from '@prisma/client';
-import TwitterService from '../service/TwitterService';
+import TwitterService, { Tweet } from '../service/TwitterService';
 import logger from '../logger';
 import FileImporter from '../importer/FileImporter';
 import TwitterImporter from '../importer/TwitterImporter';
@@ -68,7 +68,7 @@ export default class JobManager {
   ): PrismaPromise<JobWithUser[]> {
     return this.prisma.job.findMany({
       where: {
-        twitter_user_id: user.id,
+        user_id: user.id,
         type,
       },
       orderBy: {
@@ -87,12 +87,12 @@ export default class JobManager {
    */
   public async downloadUserLikesJob(job: JobWithUser) {
     for await (const page of this.twitterService.usersIdLikedTweets(
-      job.twitter_user_id,
+      job.user_id,
       job.pagination_token || undefined
     )) {
       const numExisting = await this.prisma.twitterLike.count({
         where: {
-          user_id: job.twitter_user_id,
+          user_id: job.user_id,
           tweet_id: {
             in: page.tweets.map(t => t.id),
           },
@@ -105,27 +105,11 @@ export default class JobManager {
         break;
       }
 
-      // Construct media relations outside of primary transaction due to
-      // timeout limitations of Prisma's interactive transactions
-      const tweetIdToMediaMap = new Map<string, TwitterMedia[]>();
-      for (const tweet of page.tweets) {
-        logger.debug(`Downloading media for tweet ${tweet.id}`);
-
-        const media: TwitterMedia[] = [];
-        for (const mediaItem of tweet.media) {
-          const localFile = await this.fileImporter.download(mediaItem.url);
-          media.push({
-            ...mediaItem,
-            file_id: localFile.sha256,
-            tweet_id: tweet.id,
-          });
-        }
-
-        tweetIdToMediaMap.set(tweet.id, media);
-      }
-
-      // Use a transaction so that the pagination token will resume correctly
+      // Roll back this page if the job is interrupted
       const transaction: PrismaPromise<any>[] = [];
+
+      // Download files first since we cannot do async work in a transaction
+      const tweetIdToMediaMap = await this.downloadMedia(page.tweets);
 
       // Construct like relationships
       const likedTweetIds: string[] = [];
@@ -141,16 +125,14 @@ export default class JobManager {
 
         likedTweetIds.push(tweet.id);
       }
-      transaction.push(
-        ...this.twitterImporter.createLikes(job.user, likedTweetIds)
-      );
+      transaction.push(...this.twitterImporter.stageLikes(job, likedTweetIds));
 
       // Save this job's progress in case the next page is interrupted
       transaction.push(
         this.prisma.job.update({
           where: {
-            twitter_user_id_type_created_at: {
-              twitter_user_id: job.twitter_user_id,
+            user_id_type_created_at: {
+              user_id: job.user_id,
               type: job.type,
               created_at: job.created_at,
             },
@@ -161,19 +143,60 @@ export default class JobManager {
         })
       );
 
-      // Execute all Tweet inserts and the following Job update
+      // Execute all Tweet inserts and the subsequent Job update
       await this.prisma.$transaction(transaction);
     }
 
-    // Work is complete, delete the job
-    await this.prisma.job.delete({
-      where: {
-        twitter_user_id_type_created_at: {
-          twitter_user_id: job.twitter_user_id,
-          type: job.type,
-          created_at: job.created_at,
+    // Work is complete; import the job's staged likes and delete the job
+    const stagedLikes = await this.twitterImporter.getStagedLikes(job);
+    await this.prisma.$transaction([
+      ...this.twitterImporter.createLikes(stagedLikes),
+      this.twitterImporter.deleteStagedLikes(stagedLikes),
+      this.prisma.job.delete({
+        where: {
+          user_id_type_created_at: {
+            user_id: job.user_id,
+            type: job.type,
+            created_at: job.created_at,
+          },
         },
-      },
-    });
+      }),
+    ]);
+  }
+
+  /**
+   * Downloads files for a tweet's attached media.
+   * Only creates LocalFile records in the client database,
+   * not TwitterTweets or TwitterMedia
+   * @param tweets List of tweets whose media we should download.
+   * @returns A map from tweet ID to insertable media records for the
+   * downloaded files.
+   */
+  private async downloadMedia(
+    tweets: Tweet[]
+  ): Promise<Map<string, TwitterMedia[]>> {
+    const tweetIdToMediaMap = new Map<string, TwitterMedia[]>();
+
+    // Sort from newest to oldest
+    const sortedTweets = tweets
+      .slice()
+      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+    for (const tweet of sortedTweets) {
+      logger.debug(`Downloading media for tweet ${tweet.id}`);
+
+      const media: TwitterMedia[] = [];
+      for (const mediaItem of tweet.media) {
+        const localFile = await this.fileImporter.download(mediaItem.url);
+        media.push({
+          ...mediaItem,
+          file_id: localFile.sha256,
+          tweet_id: tweet.id,
+        });
+      }
+
+      tweetIdToMediaMap.set(tweet.id, media);
+    }
+
+    return tweetIdToMediaMap;
   }
 }

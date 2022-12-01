@@ -11,33 +11,51 @@ datasource db {
 }
 
 model TwitterUser {
-  id           String         @id
+  id           String               @id
   name         String
   username     String
   created_at   DateTime
   tweets       TwitterTweet[]
-  liked_tweets TwitterLike[]
+  likes        TwitterLike[]
   jobs         Job[]
+  staged_likes TwitterLikeStaging[]
 }
 
 model TwitterTweet {
-  id           String         @id
+  id           String               @id
   text         String
   created_at   DateTime
-  author       TwitterUser    @relation(fields: [author_id], references: [id])
+  author       TwitterUser          @relation(fields: [author_id], references: [id])
   author_id    String
   media        TwitterMedia[]
-  liking_users TwitterLike[]
+  likes        TwitterLike[]
+  staged_likes TwitterLikeStaging[]
 }
 
 model TwitterLike {
+  index      Int          @id @default(autoincrement())
   user       TwitterUser  @relation(fields: [user_id], references: [id])
   user_id    String
   tweet      TwitterTweet @relation(fields: [tweet_id], references: [id])
   tweet_id   String
   created_at DateTime     @default(now())
 
-  @@id([user_id, tweet_id])
+  @@unique([user_id, tweet_id])
+}
+
+model TwitterLikeStaging {
+  index          Int          @id @default(autoincrement())
+  user           TwitterUser  @relation(fields: [user_id], references: [id])
+  user_id        String
+  tweet          TwitterTweet @relation(fields: [tweet_id], references: [id])
+  tweet_id       String
+  job            Job          @relation(fields: [job_user_id, job_type, job_created_at], references: [user_id, type, created_at])
+  job_user_id    String
+  job_type       String
+  job_created_at DateTime
+  created_at     DateTime     @default(now())
+
+  @@unique([user_id, tweet_id, job_user_id, job_type, job_created_at])
 }
 
 model TwitterMedia {
@@ -67,12 +85,13 @@ model Mime {
 
 // Tracks progress of different file import tasks
 model Job {
-  user             TwitterUser @relation(fields: [twitter_user_id], references: [id])
-  twitter_user_id  String
+  user             TwitterUser          @relation(fields: [user_id], references: [id])
+  user_id          String
   type             String
-  created_at       DateTime    @default(now())
-  updated_at       DateTime    @updatedAt
+  created_at       DateTime             @default(now())
+  updated_at       DateTime             @updatedAt
   pagination_token String?
+  staged_likes     TwitterLikeStaging[]
 
-  @@id([twitter_user_id, type, created_at])
+  @@id([user_id, type, created_at])
 }

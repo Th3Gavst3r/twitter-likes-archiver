@@ -33,7 +33,7 @@ async function main() {
   );
   for (const job of deferredDownloadJobs) {
     logger.info(
-      `Resuming deferred ${job.type} job for user ${job.twitter_user_id}, which was created at ${job.created_at}`
+      `Resuming deferred ${job.type} job for user ${job.user_id}, which was created at ${job.created_at}`
     );
     await jobManager.downloadUserLikesJob(job);
   }

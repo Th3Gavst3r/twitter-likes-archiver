@@ -259,7 +259,8 @@ export default class TwitterService {
         ) {
           // Select the variant with the highest bitrate
           url = mediaItem.variants
-            ?.sort((a, b) => {
+            ?.slice()
+            .sort((a, b) => {
               const ap = a.bit_rate;
               const bp = b.bit_rate;
               return !(ap || bp) ? 0 : !ap ? -1 : !bp ? 1 : ap - bp;
