@@ -95,3 +95,11 @@ model Job {
 
   @@id([user_id, type, created_at])
 }
+
+// Auth storage
+model Session {
+  id        String   @id
+  sid       String   @unique
+  data      String
+  expiresAt DateTime
+}
