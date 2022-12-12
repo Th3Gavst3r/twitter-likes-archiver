@@ -76,35 +76,33 @@ export default class TwitterImporter {
    * TwitterLike table. After doing this, the likes will be recorded in
    * historically ascending order.
    * @param job The Job which is importing these likes.
-   * @param tweetIds The IDs of the tweets which were liked in order from
-   * newest to oldest.
+   * @param user The TwitterUser who owns these likes.
+   * @param tweetIds The IDs of the tweets which were liked. Must be in order
+   * from newest to oldest.
    * @returns The resulting TwitterLikeStaging records.
    */
   public stageLikes(
     job: Job,
+    user: TwitterUser,
     tweetIds: string[]
   ): PrismaPromise<TwitterLikeStaging>[] {
     logger.debug(
-      `Staging likes between user ${job.user_id} and ${tweetIds.length} tweets`
+      `Staging likes between user ${user.id} and ${tweetIds.length} tweets`
     );
 
     return tweetIds.map(tweetId =>
       this.prisma.twitterLikeStaging.upsert({
         where: {
-          user_id_tweet_id_job_user_id_job_type_job_created_at: {
-            user_id: job.user_id,
+          user_id_tweet_id_job_id: {
+            user_id: user.id,
             tweet_id: tweetId,
-            job_user_id: job.user_id,
-            job_type: job.type,
-            job_created_at: job.created_at,
+            job_id: job.id,
           },
         },
         create: {
-          user_id: job.user_id,
+          user_id: user.id,
           tweet_id: tweetId,
-          job_user_id: job.user_id,
-          job_type: job.type,
-          job_created_at: job.created_at,
+          job_id: job.id,
         },
         update: {},
       })
@@ -120,9 +118,7 @@ export default class TwitterImporter {
     return this.prisma.twitterLikeStaging.findMany({
       where: {
         job: {
-          user_id: job.user_id,
-          type: job.type,
-          created_at: job.created_at,
+          id: job.id,
         },
       },
       orderBy: {

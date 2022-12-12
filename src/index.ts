@@ -1,7 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { auth, Client } from 'twitter-api-sdk';
 import logger from './logger';
-import TwitterService from './service/TwitterService';
 import { getEnvironmentVariableOrThrow } from './util/Validation';
 import JobManager, { JobType } from './importer/JobManager';
 import FileImporter from './importer/FileImporter';
@@ -9,35 +7,41 @@ import TwitterImporter from './importer/TwitterImporter';
 import express from 'express';
 import expressSession from 'express-session';
 import { PrismaSessionStore } from '@quixo3/prisma-session-store';
-import { randomUUID } from 'crypto';
 import passport from 'passport';
-import { getAuthClient, getTwitterStrategy } from './auth/TwitterOAuth2';
-import { TokenError } from 'passport-oauth2';
+import { getTwitterStrategy } from './auth/TwitterOAuth2';
+import SessionManager from './importer/SessionManager';
 
 declare global {
   namespace Express {
     interface User {
       id: string;
-      accessToken: string;
-      refreshToken: string;
+      token: {
+        access_token: string;
+        refresh_token: string;
+        expires_at?: number;
+      };
     }
   }
 }
 
 const prisma = new PrismaClient();
+const fileImporter = new FileImporter(prisma);
+const twitterImporter = new TwitterImporter(prisma);
+const sessionManager = new SessionManager(prisma);
 
-// const authClient = getAuthClient({ scopes: ['like.read', 'offline.access'] });
-// const twitterClient = new Client(authClient);
-
-// const twitterService = new TwitterService(twitterClient);
-// const fileImporter = new FileImporter(prisma);
-// const twitterImporter = new TwitterImporter(prisma);
-// const jobManager = new JobManager(
-//   prisma,
-//   twitterService,
-//   fileImporter,
-//   twitterImporter
-// );
+const jobManager = new JobManager(
+  prisma,
+  fileImporter,
+  twitterImporter,
+  sessionManager
+);
+jobManager.on('completed', job =>
+  logger.info(`${job.type} job ${job.id} completed.`)
+);
+jobManager.on('failed', (job, error) =>
+  logger.error(`${job.type} job ${job.id} failed: ${JSON.stringify(error)}`)
+);
+jobManager.initialize();
 
 const app = express();
 
@@ -49,6 +53,7 @@ app.use(
     saveUninitialized: true,
     store: new PrismaSessionStore(prisma, {
       checkPeriod: 1000 * 60 * 2, // 2 minutes
+      dbRecordIdIsSessionId: true,
     }),
   })
 );
@@ -63,7 +68,7 @@ app.use((req, res, next) => {
   if (req.isAuthenticated()) {
     return next();
   }
-  res.redirect('/login');
+  return res.redirect('/login');
 });
 
 passport.serializeUser((user, done) => {
@@ -74,7 +79,7 @@ passport.deserializeUser((str: string, done) => {
   done(null, JSON.parse(str));
 });
 
-passport.use(getTwitterStrategy(prisma));
+passport.use(getTwitterStrategy());
 
 app.get('/', (req, res) => res.send('Hello, world!'));
 
@@ -84,51 +89,30 @@ app.get(
   '/auth/callback',
   passport.authenticate('twitter', { failureRedirect: '/login' }),
   (req, res) => {
-    res.redirect('/');
+    return res.redirect('/');
   }
 );
 
-app.post('/download', (req, res) => {
-  res.sendStatus(201);
+app.get('/download', async (req, res) => {
+  if (!req.user) {
+    return res.sendStatus(401);
+  }
+
+  const user = await prisma.twitterUser.findUnique({
+    where: { id: req.user.id },
+  });
+  if (!user) {
+    return res.redirect('/login');
+  }
+
+  await jobManager.add(JobType.USER_LIKES_DOWNLOAD, {
+    user,
+    sessionId: req.session.id,
+  });
+  return res.sendStatus(201);
 });
 
 const port = process.env.PORT || 3000;
 app.listen(port, () => {
   logger.info(`Server is listening on port ${port}`);
 });
-
-// async function main() {
-//   const username = getEnvironmentVariableOrThrow('USERNAME');
-
-//   const user = await twitterService.findUserByUsername(username);
-
-//   // Finish incomplete jobs first
-//   const deferredDownloadJobs = await jobManager.getDeferredJobs(
-//     user,
-//     JobType.USER_LIKES_DOWNLOAD
-//   );
-//   for (const job of deferredDownloadJobs) {
-//     logger.info(
-//       `Resuming deferred ${job.type} job for user ${job.user_id}, which was created at ${job.created_at}`
-//     );
-//     await jobManager.downloadUserLikesJob(job);
-//   }
-
-//   // Download new likes
-//   logger.info(`Downloading new likes for user ${user.id}`);
-//   const freshJob = await jobManager.issueJob(user, JobType.USER_LIKES_DOWNLOAD);
-//   await jobManager.downloadUserLikesJob(freshJob);
-// }
-
-// main()
-//   .then(async () => {
-//     await prisma.$disconnect();
-//   })
-//   .catch(async e => {
-//     logger.error(e);
-//     await prisma.$disconnect();
-//     process.exit(1);
-//   });
-
-// TODO: Check what happens when file streams break (i.e. when disconnecting vpn)
-// TODO: Use OAuth for user selection

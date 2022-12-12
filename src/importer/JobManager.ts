@@ -1,5 +1,5 @@
 import {
-  Prisma,
+  Job,
   PrismaClient,
   PrismaPromise,
   TwitterMedia,
@@ -9,73 +9,145 @@ import TwitterService, { Tweet } from '../service/TwitterService';
 import logger from '../logger';
 import FileImporter from '../importer/FileImporter';
 import TwitterImporter from '../importer/TwitterImporter';
-
-const jobWithUser = Prisma.validator<Prisma.JobArgs>()({
-  include: { user: true },
-});
-type JobWithUser = Prisma.JobGetPayload<typeof jobWithUser>;
+import { TypedEmitter } from 'tiny-typed-emitter';
+import { getAuthClient } from '../auth/TwitterOAuth2';
+import { assert } from 'typescript-json';
+import SessionManager from './SessionManager';
 
 export enum JobType {
-  USER_LIKES_DOWNLOAD = 'user_likes_download',
+  USER_LIKES_DOWNLOAD = 'USER_LIKES_DOWNLOAD',
+}
+
+export interface JobArgs {
+  [JobType.USER_LIKES_DOWNLOAD]: {
+    user: TwitterUser;
+    sessionId: string;
+    paginationToken?: string;
+  };
+}
+
+export interface JobManagerEvents {
+  completed: (job: Job) => void;
+  failed: (job: Job, error: unknown) => void;
 }
 
 /**
- * Issues and executes units of resumable work.
+ * Issues and executes units of long-running background work.
  */
-export default class JobManager {
+export default class JobManager extends TypedEmitter<JobManagerEvents> {
+  private queue: Job[];
+
   constructor(
     private prisma: PrismaClient,
-    private twitterService: TwitterService,
     private fileImporter: FileImporter,
-    private twitterImporter: TwitterImporter
-  ) {}
+    private twitterImporter: TwitterImporter,
+    private sessionManager: SessionManager
+  ) {
+    super();
+    this.queue = [];
+  }
 
   /**
-   * Creates a Job record in the client database.
-   * @param user The user who initiated this Job.
-   * @param type The type of Job which will run.
-   * @returns The resulting Job.
+   * Resumes all incomplete jobs on app startup.
    */
-  public issueJob(
-    user: TwitterUser,
-    type: JobType
-  ): PrismaPromise<JobWithUser> {
-    return this.prisma.job.create({
+  public async initialize(): Promise<void> {
+    const deferredJobs = await this.getDeferredJobs();
+    for (const job of deferredJobs) {
+      this._add(job);
+    }
+  }
+
+  /**
+   * Creates a Job and adds it to the current work queue.
+   * @param type The type of job which will be run.
+   * @param args The arguments required for the given job `type`.
+   * @returns The resulting Job record.
+   */
+  public async add<T extends JobType, V extends JobArgs[T]>(
+    type: T,
+    args: V
+  ): Promise<Job> {
+    const job = await this.prisma.job.create({
       data: {
-        user: {
-          connectOrCreate: {
-            where: { id: user.id },
-            create: user,
-          },
-        },
         type,
-      },
-      include: {
-        user: true,
+        args: JSON.stringify(args),
       },
     });
+
+    this._add(job);
+
+    return job;
+  }
+
+  /**
+   * Adds a job to the work queue. If the queue is not already running, it is
+   * automatically started.
+   * @param job A fully initialized Job.
+   */
+  private _add(job: Job): void {
+    this.queue.push(job);
+
+    if (this.queue.length === 1) {
+      // Queue was empty; start it again
+      this.run();
+    }
+  }
+
+  /**
+   * Begins working through all jobs present in the queue. New items can be
+   * pushed even while work is still running.
+   */
+  private async run(): Promise<void> {
+    while (this.queue.length > 0) {
+      const job = this.queue.shift();
+      if (!job) continue;
+
+      try {
+        let jobPromise: Promise<void>;
+        switch (job.type) {
+          case JobType.USER_LIKES_DOWNLOAD:
+            const args = JSON.parse(job.args);
+            args.user.created_at = new Date(args.user.created_at);
+            assert<JobArgs[JobType.USER_LIKES_DOWNLOAD]>(args);
+
+            jobPromise = this.downloadUserLikesJob(job, args);
+            break;
+
+          default:
+            this.emit(
+              'failed',
+              job,
+              new Error(`Invalid job type: ${job.type}`)
+            );
+            continue;
+        }
+
+        await jobPromise
+          .then(() =>
+            this.prisma.job.delete({
+              where: { id: job.id },
+            })
+          )
+          .then(() => this.emit('completed', job));
+      } catch (error) {
+        this.emit('failed', job, error);
+      }
+    }
   }
 
   /**
    * Finds all existing Jobs which have not yet been completed and deleted.
-   * @param user User whose Jobs will be found.
-   * @param type The type of Job to look for.
-   * @returns A list of existing Job records with the given `user` and `type`.
+   * @param type The type of Job to look for. When undefined, finds jobs of
+   * all types.
+   * @returns A list of existing Job records with the given `type`.
    */
-  public getDeferredJobs(
-    user: TwitterUser,
-    type: JobType
-  ): PrismaPromise<JobWithUser[]> {
+  private getDeferredJobs(type?: JobType): PrismaPromise<Job[]> {
     return this.prisma.job.findMany({
       where: {
-        user_id: user.id,
         type,
       },
       orderBy: {
         created_at: 'asc',
-      },
-      include: {
-        user: true,
       },
     });
   }
@@ -84,20 +156,50 @@ export default class JobManager {
    * Downloads the complete history of a Twitter user's likes and saves them to
    * disk.
    * @param job The database record tracking this Job's progress.
+   * @param args The arguments required to complete the Job.
    */
-  public async downloadUserLikesJob(job: JobWithUser) {
-    for await (const page of this.twitterService.usersIdLikedTweets(
-      job.user_id,
-      job.pagination_token || undefined
+  private async downloadUserLikesJob(
+    job: Job,
+    args: JobArgs[JobType.USER_LIKES_DOWNLOAD]
+  ) {
+    let session = await this.sessionManager.findSession(args.sessionId);
+    let sessionData = this.sessionManager.getSessionData(session);
+
+    const twitterService = new TwitterService(
+      getAuthClient({
+        scopes: ['like.read', 'offline.access'],
+        token: sessionData.passport.user.token,
+      }),
+      async token => {
+        session = await this.sessionManager.updateSessionToken(session, token);
+        sessionData = this.sessionManager.getSessionData(session);
+      }
+    );
+
+    const user = await this.prisma.twitterUser.upsert({
+      where: { id: args.user.id },
+      create: {
+        id: args.user.id,
+        name: args.user.name,
+        username: args.user.username,
+        created_at: args.user.created_at,
+      },
+      update: {},
+    });
+
+    for await (const page of twitterService.usersIdLikedTweets(
+      args.user.id,
+      args.paginationToken || undefined
     )) {
       const numExisting = await this.prisma.twitterLike.count({
         where: {
-          user_id: job.user_id,
+          user_id: args.user.id,
           tweet_id: {
             in: page.tweets.map(t => t.id),
           },
         },
       });
+
       if (numExisting === page.tweets.length) {
         logger.info(
           `All likes have been seen. Ending downloads early because we're caught up.`
@@ -125,20 +227,20 @@ export default class JobManager {
 
         likedTweetIds.push(tweet.id);
       }
-      transaction.push(...this.twitterImporter.stageLikes(job, likedTweetIds));
+      transaction.push(
+        ...this.twitterImporter.stageLikes(job, user, likedTweetIds)
+      );
 
       // Save this job's progress in case the next page is interrupted
+      args.paginationToken = page.meta?.next_token;
+
       transaction.push(
         this.prisma.job.update({
           where: {
-            user_id_type_created_at: {
-              user_id: job.user_id,
-              type: job.type,
-              created_at: job.created_at,
-            },
+            id: job.id,
           },
           data: {
-            pagination_token: page.meta?.next_token,
+            args: JSON.stringify(args),
           },
         })
       );
@@ -148,19 +250,11 @@ export default class JobManager {
     }
 
     // Work is complete; import the job's staged likes and delete the job
+    logger.info(`Committing staged likes from job ${job.id}`);
     const stagedLikes = await this.twitterImporter.getStagedLikes(job);
     await this.prisma.$transaction([
       ...this.twitterImporter.createLikes(stagedLikes),
       this.twitterImporter.deleteStagedLikes(stagedLikes),
-      this.prisma.job.delete({
-        where: {
-          user_id_type_created_at: {
-            user_id: job.user_id,
-            type: job.type,
-            created_at: job.created_at,
-          },
-        },
-      }),
     ]);
   }
 

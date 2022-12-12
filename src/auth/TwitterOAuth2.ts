@@ -14,18 +14,18 @@ import { getEnvironmentVariableOrThrow } from '../util/Validation';
  */
 export function getAuthClient(options: {
   scopes: auth.OAuth2Scopes[];
-  accessToken?: string;
-  refreshToken?: string;
+  token?: {
+    access_token: string;
+    refresh_token: string;
+    expires_at?: number;
+  };
 }): auth.OAuth2User {
   return new auth.OAuth2User({
     client_id: getEnvironmentVariableOrThrow('CLIENT_ID'),
     client_secret: getEnvironmentVariableOrThrow('CLIENT_SECRET'),
     callback: `${getEnvironmentVariableOrThrow('BASE_URL')}/auth/callback`,
     scopes: options.scopes,
-    token: {
-      access_token: options.accessToken,
-      refresh_token: options.refreshToken,
-    },
+    token: options.token,
   });
 }
 
@@ -52,8 +52,8 @@ export class TwitterStrategy extends OAuth2Strategy {
   constructor(
     private options: TwitterStrategyOptions,
     private verify: (
-      accessToken: string,
-      refreshToken: string,
+      access_token: string,
+      refresh_token: string,
       profile: TwitterResponse<findMyUser>['data'],
       verified: VerifyCallback
     ) => void
@@ -177,8 +177,8 @@ export function getTwitterStrategy(): TwitterStrategy {
       callbackURL: `${getEnvironmentVariableOrThrow('BASE_URL')}/auth/callback`,
     },
     (
-      accessToken: string,
-      refreshToken: string,
+      access_token: string,
+      refresh_token: string,
       profile: TwitterResponse<findMyUser>['data'],
       done: VerifyCallback
     ) => {
@@ -186,7 +186,10 @@ export function getTwitterStrategy(): TwitterStrategy {
         return done(null, undefined);
       }
 
-      return done(null, { id: profile.id, accessToken, refreshToken });
+      return done(null, {
+        id: profile.id,
+        token: { access_token, refresh_token },
+      });
     }
   );
 }

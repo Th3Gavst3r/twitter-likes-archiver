@@ -6,7 +6,8 @@
     "lib": ["esnext"],
     "esModuleInterop": true,
     "module": "esnext",
-    "moduleResolution": "node"
+    "moduleResolution": "node",
+    "plugins": [{ "transform": "typescript-json/lib/transform" }]
   },
-  "ts-node": {"esm": true, "experimentalSpecifierResolution": "node"}
+  "ts-node": { "esm": true, "experimentalSpecifierResolution": "node" }
 }

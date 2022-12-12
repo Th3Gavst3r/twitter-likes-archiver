@@ -9,6 +9,7 @@ import {
   MakeRequired,
 } from '../util/Validation';
 import logger from '../logger';
+import { OAuth2User } from 'twitter-api-sdk/dist/OAuth2User';
 
 export type Media = Omit<TwitterMedia, 'tweet_id' | 'file_id'>;
 
@@ -16,14 +17,28 @@ export type Tweet = Prisma.TwitterTweetGetPayload<{
   include: { author: true };
 }> & { media: Media[] };
 
+export interface Token {
+  access_token?: string;
+  refresh_token?: string;
+  expires_at?: number;
+}
+
 /**
  * Wrapper around the Twitter SDK which performs response validation and
  * converts raw API responses into more useful local objects.
  */
 export default class TwitterService {
   private readonly MAX_RETRIES = 3;
+  private token?: Token;
+  private client: Client;
 
-  constructor(private readonly client: Client) {}
+  constructor(
+    private readonly authClient: OAuth2User,
+    private tokenCallback: (token: Token | undefined) => Promise<void>
+  ) {
+    this.token = authClient.token;
+    this.client = new Client(authClient);
+  }
 
   /**
    * Look up a user's Twitter ID by their username.
@@ -42,6 +57,8 @@ export default class TwitterService {
         max_retries: this.MAX_RETRIES,
       }
     );
+    await this.checkForUpdatedToken();
+
     if (usernameResult.errors && usernameResult.errors.length > 0) {
       const message = usernameResult.errors
         .map(e => e.title + (e.detail ? `: ${e.detail}` : ''))
@@ -92,6 +109,8 @@ export default class TwitterService {
       },
       { max_retries: this.MAX_RETRIES }
     )) {
+      await this.checkForUpdatedToken();
+
       if (likesResult.meta?.result_count === 0) {
         return [];
       }
@@ -323,5 +342,12 @@ export default class TwitterService {
     media: types.components['schemas']['Media']
   ): media is types.components['schemas']['Video'] {
     return media.type === 'video';
+  }
+
+  private async checkForUpdatedToken(): Promise<void> {
+    if (this.authClient.token !== this.token) {
+      this.token = this.authClient.token;
+      await this.tokenCallback(this.token);
+    }
   }
 }
