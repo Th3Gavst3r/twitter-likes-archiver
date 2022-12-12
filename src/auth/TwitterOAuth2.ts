@@ -1,9 +1,11 @@
+import { PrismaClient } from '@prisma/client';
 import OAuth2Strategy, {
   InternalOAuthError,
   VerifyCallback,
 } from 'passport-oauth2';
 import { auth } from 'twitter-api-sdk';
 import { findMyUser, TwitterResponse } from 'twitter-api-sdk/dist/types';
+import logger from '../logger';
 import { getEnvironmentVariableOrThrow } from '../util/Validation';
 
 /**
@@ -167,7 +169,7 @@ export class TwitterStrategy extends OAuth2Strategy {
  * requirements.
  * @returns The autoconfigured passport strategy.
  */
-export function getTwitterStrategy(): TwitterStrategy {
+export function getTwitterStrategy(prisma: PrismaClient): TwitterStrategy {
   return new TwitterStrategy(
     {
       clientType: 'private',
@@ -176,7 +178,7 @@ export function getTwitterStrategy(): TwitterStrategy {
       scope: ['tweet.read', 'users.read', 'like.read', 'offline.access'],
       callbackURL: `${getEnvironmentVariableOrThrow('BASE_URL')}/auth/callback`,
     },
-    (
+    async (
       access_token: string,
       refresh_token: string,
       profile: TwitterResponse<findMyUser>['data'],
@@ -186,8 +188,24 @@ export function getTwitterStrategy(): TwitterStrategy {
         return done(null, undefined);
       }
 
+      if (!profile.created_at) {
+        logger.warn(`User ${profile.id} does not have a created_at property.`);
+        profile.created_at = '0';
+      }
+
+      const user = await prisma.twitterUser.upsert({
+        where: { id: profile.id },
+        create: {
+          id: profile.id,
+          name: profile.name,
+          username: profile.username,
+          created_at: profile.created_at,
+        },
+        update: { name: profile.name, username: profile.username },
+      });
+
       return done(null, {
-        id: profile.id,
+        id: user.id,
         token: { access_token, refresh_token },
       });
     }

@@ -79,7 +79,7 @@ passport.deserializeUser((str: string, done) => {
   done(null, JSON.parse(str));
 });
 
-passport.use(getTwitterStrategy());
+passport.use(getTwitterStrategy(prisma));
 
 app.get('/', (req, res) => res.send('Hello, world!'));
 
