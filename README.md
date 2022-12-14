@@ -1,6 +1,6 @@
 # twitter-archiver
 
-Downloads a Twitter user's liked tweets for local backup and storage.
+Downloads liked tweets for local backup and storage.
 
 ## Building
 
@@ -12,13 +12,15 @@ npm install && npx prisma migrate deploy
 
 ### Environment variables
 
-Rename the [.env.example](.env.example) file to `.env` and populate it with the following environment variables:
+Rename the [`.env.example`](.env.example) file to `.env` and populate it with the following environment variables:
 
-| Variable     | Description                                                                              |
-| ------------ | ---------------------------------------------------------------------------------------- |
-| DATABASE_URL | Desired location of your client database                                                 |
-| BEARER_TOKEN | Bearer token for your [Twitter app](https://developer.twitter.com/en/docs/apps/overview) |
-| USERNAME     | The username of the account whose likes will be downloaded                               |
+| Variable       | Description                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| DATABASE_URL   | Desired location of your database file.                                                         |
+| CLIENT_ID      | Client ID for your [Twitter app](https://developer.twitter.com/en/docs/apps/overview).          |
+| CLIENT_SECRET  | Client secret for your [Twitter app](https://developer.twitter.com/en/docs/apps/overview).      |
+| SESSION_SECRET | A random secret used to secure session cookies. Can be any string.                              |
+| BASE_URL       | The URL where your web server is hosted. The server starts on http://localhost:3000 by default. |
 
 ### Start the app
 
