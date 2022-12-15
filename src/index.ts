@@ -24,7 +24,19 @@ declare global {
   }
 }
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient({
+  datasources: {
+    db: {
+      // Prisma's SQLite driver will fail on concurent queries due to database locks.
+      // Limiting to one connection will prevent concurrency issues, but will still fail
+      // if another client (such as an external database tool) has an active connection.
+      // https://github.com/prisma/prisma/issues?q=is%3Aissue+label%3A%22topic%3A+Timed+out+during+query+execution%22+
+      // See also for some info about write-ahead logging (which still doesn't seem to help):
+      // https://github.com/prisma/prisma/issues/3303
+      url: `${process.env.DATABASE_URL}?connection_limit=1`,
+    },
+  },
+});
 const fileImporter = new FileImporter(prisma);
 const twitterImporter = new TwitterImporter(prisma);
 const sessionManager = new SessionManager(prisma);
