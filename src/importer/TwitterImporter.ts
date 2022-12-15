@@ -9,7 +9,7 @@ import {
   TwitterTweet,
   TwitterUser,
 } from '@prisma/client';
-import logger from '../logger';
+import logger from '../util/logger';
 
 export default class TwitterImporter {
   constructor(private readonly prisma: PrismaClient) {}

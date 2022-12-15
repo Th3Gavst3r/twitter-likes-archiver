@@ -7,7 +7,7 @@ import { createWriteStream } from 'fs';
 import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises';
 import path from 'path';
 import { fileTypeFromBuffer } from 'file-type';
-import logger from '../logger';
+import logger from '../util/logger';
 
 export default class FileImporter {
   constructor(private readonly prisma: PrismaClient) {}

@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import logger from './logger';
+import logger from './util/logger';
 import { getEnvironmentVariableOrThrow } from './util/Validation';
 import JobManager, { JobType } from './importer/JobManager';
 import FileImporter from './importer/FileImporter';
@@ -57,6 +57,7 @@ jobManager.initialize();
 
 const app = express();
 
+// express-session configuration
 app.use(
   expressSession({
     cookie: { maxAge: 1000 * 60 * 60 * 24 * 7 }, // one week
@@ -69,8 +70,19 @@ app.use(
     }),
   })
 );
+
+// passport.js configuration
 app.use(passport.initialize());
 app.use(passport.session());
+passport.serializeUser((user, done) => {
+  done(null, JSON.stringify(user));
+});
+passport.deserializeUser((str: string, done) => {
+  done(null, JSON.parse(str));
+});
+passport.use(getTwitterStrategy(prisma));
+
+// Auth flow
 app.use((req, res, next) => {
   const whiteList = ['/', '/login', '/auth/callback'];
   if (whiteList.includes(req.path)) {
@@ -82,21 +94,7 @@ app.use((req, res, next) => {
   }
   return res.redirect('/login');
 });
-
-passport.serializeUser((user, done) => {
-  done(null, JSON.stringify(user));
-});
-
-passport.deserializeUser((str: string, done) => {
-  done(null, JSON.parse(str));
-});
-
-passport.use(getTwitterStrategy(prisma));
-
-app.get('/', (req, res) => res.send('Hello, world!'));
-
 app.get('/login', passport.authenticate('twitter'));
-
 app.get(
   '/auth/callback',
   passport.authenticate('twitter', { failureRedirect: '/login' }),

@@ -8,7 +8,7 @@ import {
   checkFields,
   MakeRequired,
 } from '../util/Validation';
-import logger from '../logger';
+import logger from '../util/logger';
 import { OAuth2User } from 'twitter-api-sdk/dist/OAuth2User';
 
 export type Media = Omit<TwitterMedia, 'tweet_id' | 'file_id'>;

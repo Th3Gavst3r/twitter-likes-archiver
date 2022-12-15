@@ -5,7 +5,7 @@ import OAuth2Strategy, {
 } from 'passport-oauth2';
 import { auth } from 'twitter-api-sdk';
 import { findMyUser, TwitterResponse } from 'twitter-api-sdk/dist/types';
-import logger from '../logger';
+import logger from '../util/logger';
 import { getEnvironmentVariableOrThrow } from '../util/Validation';
 
 /**

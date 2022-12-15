@@ -7,7 +7,7 @@ const messageFormat = winston.format.printf(
 );
 
 const logger = winston.createLogger({
-  level: 'info',
+  level: 'debug',
   format: winston.format.combine(
     winston.format.errors({ stack: true }),
     winston.format.timestamp(),

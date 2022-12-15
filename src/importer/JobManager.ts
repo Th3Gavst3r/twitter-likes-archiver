@@ -6,7 +6,7 @@ import {
   TwitterUser,
 } from '@prisma/client';
 import TwitterService, { Tweet } from '../service/TwitterService';
-import logger from '../logger';
+import logger from '../util/logger';
 import FileImporter from '../importer/FileImporter';
 import TwitterImporter from '../importer/TwitterImporter';
 import { TypedEmitter } from 'tiny-typed-emitter';
