@@ -94,18 +94,6 @@ export default class FileImporter {
     };
     const stats = await stat(tempFile);
 
-    // Use a foreign relation to improve lookup times
-    logger.debug(`Creating mime record for ${fileType.mime}`);
-    const mimeType = await this.prisma.mime.upsert({
-      where: {
-        name: fileType.mime,
-      },
-      update: {},
-      create: {
-        name: fileType.mime,
-      },
-    });
-
     // Move the file out of temporary storage
     const clientFilesDir = path.resolve('db', 'client_files');
     const file = path.resolve(
@@ -132,13 +120,35 @@ export default class FileImporter {
       update: {
         created_at: stats.ctime,
         size: stats.size,
-        mime_id: mimeType.id,
+        file_extension: {
+          connectOrCreate: {
+            where: { ext: fileType.ext },
+            create: { ext: fileType.ext },
+          },
+        },
+        mime: {
+          connectOrCreate: {
+            where: { name: fileType.mime },
+            create: { name: fileType.mime },
+          },
+        },
       },
       create: {
         sha256: hash,
         created_at: stats.ctime,
         size: stats.size,
-        mime_id: mimeType.id,
+        file_extension: {
+          connectOrCreate: {
+            where: { ext: fileType.ext },
+            create: { ext: fileType.ext },
+          },
+        },
+        mime: {
+          connectOrCreate: {
+            where: { name: fileType.mime },
+            create: { name: fileType.mime },
+          },
+        },
       },
     });
   }

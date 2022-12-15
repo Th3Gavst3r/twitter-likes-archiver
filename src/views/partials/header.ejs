@@ -1,0 +1,11 @@
+<nav class="navbar navbar-expand-lg rounded bg-light">
+  <div class="container-fluid">
+    <div class="navbar-brand">
+      <a class="hover-link text-black" href="https://twitter.com/<%= user.username %>">
+        <%= user.name %></a>'s likes
+    </div>
+    <form class="d-flex" action="/download" method="post">
+      <input type="submit" name="upvote" value="Refresh Likes" />
+    </form>
+  </div>
+</nav>

@@ -66,12 +66,20 @@ model TwitterMedia {
 }
 
 model LocalFile {
-  sha256     Bytes          @id
-  created_at DateTime
-  size       Int
-  mime       Mime           @relation(fields: [mime_id], references: [id])
-  media      TwitterMedia[]
-  mime_id    Int
+  sha256            Bytes          @id
+  created_at        DateTime
+  size              Int
+  file_extension    FileExtension  @relation(fields: [file_extension_id], references: [id])
+  file_extension_id Int
+  mime              Mime           @relation(fields: [mime_id], references: [id])
+  mime_id           Int
+  media             TwitterMedia[]
+}
+
+model FileExtension {
+  id    Int         @id @default(autoincrement())
+  ext   String      @unique
+  files LocalFile[]
 }
 
 model Mime {

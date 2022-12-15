@@ -10,6 +10,8 @@ import { PrismaSessionStore } from '@quixo3/prisma-session-store';
 import passport from 'passport';
 import { getTwitterStrategy } from './auth/TwitterOAuth2';
 import SessionManager from './importer/SessionManager';
+import path from 'path';
+import { decode } from 'html-entities';
 
 declare global {
   namespace Express {
@@ -64,6 +66,12 @@ jobManager.initialize();
 
 const app = express();
 
+// Static files
+app.set('view engine', 'ejs');
+app.set('views', path.resolve('src', 'views'));
+app.use(express.static(path.resolve('db', 'client_files')));
+app.use(express.static(path.resolve('src', 'public')));
+
 // express-session configuration
 app.use(
   expressSession({
@@ -91,7 +99,7 @@ passport.use(getTwitterStrategy(prisma));
 
 // Auth flow
 app.use((req, res, next) => {
-  const whiteList = ['/', '/login', '/auth/callback'];
+  const whiteList = ['/login', '/auth/callback'];
   if (whiteList.includes(req.path)) {
     return next();
   }
@@ -110,9 +118,43 @@ app.get(
   }
 );
 
-app.get('/download', async (req, res) => {
+app.get('/', async (req, res) => {
+  const user = await prisma.twitterUser.findUnique({
+    where: { id: req.user?.id },
+  });
+  if (!user) return res.redirect('/login');
+
+  const likes = await prisma.twitterLike.findMany({
+    where: { user_id: user.id },
+    include: {
+      tweet: {
+        include: {
+          author: true,
+          media: { include: { file: { include: { file_extension: true } } } },
+        },
+      },
+    },
+    orderBy: { index: 'desc' },
+    take: 24,
+  });
+
+  likes.forEach(like => {
+    // Decode HTML entities and remove trailing tweet URL
+    like.tweet.text = decode(like.tweet.text).replace(
+      /https?:\/\/t.co\S*\w*$/,
+      ''
+    );
+  });
+
+  res.render('pages/index', {
+    user,
+    likes,
+  });
+});
+
+app.post('/download', async (req, res) => {
   if (!req.user) {
-    return res.sendStatus(401);
+    return res.redirect('/login');
   }
 
   const user = await prisma.twitterUser.findUnique({
@@ -126,7 +168,7 @@ app.get('/download', async (req, res) => {
     user,
     sessionId: req.session.id,
   });
-  return res.sendStatus(201);
+  return res.redirect('/');
 });
 
 const port = process.env.PORT || 3000;
