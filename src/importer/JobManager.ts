@@ -114,12 +114,7 @@ export default class JobManager extends TypedEmitter<JobManagerEvents> {
             break;
 
           default:
-            this.emit(
-              'failed',
-              job,
-              new Error(`Invalid job type: ${job.type}`)
-            );
-            continue;
+            throw new Error(`Invalid job type: ${job.type}`);
         }
 
         await jobPromise

@@ -50,9 +50,16 @@ const jobManager = new JobManager(
 jobManager.on('completed', job =>
   logger.info(`${job.type} job ${job.id} completed.`)
 );
-jobManager.on('failed', (job, error) =>
-  logger.error(`${job.type} job ${job.id} failed: ${JSON.stringify(error)}`)
-);
+jobManager.on('failed', (job, error) => {
+  // Check message because TwitterResponseErrors do not correctly extend Error
+  if (error instanceof Error && error.message) {
+    logger.error(
+      `${job.type} job ${job.id} failed: ${error.stack || error.message}`
+    );
+  } else {
+    logger.error(`${job.type} job ${job.id} failed: ${JSON.stringify(error)}`);
+  }
+});
 jobManager.initialize();
 
 const app = express();
