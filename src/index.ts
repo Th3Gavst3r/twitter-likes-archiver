@@ -11,6 +11,7 @@ import passport from 'passport';
 import { getTwitterStrategy } from './auth/TwitterOAuth2';
 import SessionManager from './importer/SessionManager';
 import path from 'path';
+import { linkEntities } from './util/conversion';
 
 declare global {
   namespace Express {
@@ -129,6 +130,10 @@ app.get('/', async (req, res) => {
       tweet: {
         include: {
           author: true,
+          hashtags: {
+            include: { tag: true },
+          },
+          mentions: true,
           urls: true,
           media: { include: { file: { include: { file_extension: true } } } },
         },
@@ -139,24 +144,11 @@ app.get('/', async (req, res) => {
   });
 
   for (const like of likes) {
-    for (const urlEntity of like.tweet.urls) {
-      /* Remove self links.
-      Theoretically we could enrich the text with tweet entities here, but
-      entity indices are based on twitter's complicated rules for character
-      counting. This logic was maintained in https://github.com/twitter/twitter-text,
-      but the repo is no longer maintained and does not match how twitter
-      currently counts emoji with surrogate pairs. */
-      if (
-        urlEntity.expanded_url &&
-        urlEntity.expanded_url.match(
-          new RegExp(
-            `https?:\/\/twitter\\.com\\/\\S*\\/status\\/${like.tweet.id}`
-          )
-        )
-      ) {
-        like.tweet.text = like.tweet.text.replace(urlEntity.url, '');
-      }
-    }
+    like.tweet.text = linkEntities(
+      like.tweet.text,
+      [...like.tweet.hashtags, ...like.tweet.mentions, ...like.tweet.urls],
+      { ignoreSelfLink: { tweetId: like.tweet.id } }
+    );
   }
 
   res.render('pages/index', {

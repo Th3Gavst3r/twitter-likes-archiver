@@ -3,9 +3,7 @@
     "sourceMap": true,
     "outDir": "dist",
     "strict": true,
-    "lib": [
-      "esnext"
-    ],
+    "lib": ["esnext"],
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "node",
@@ -13,7 +11,8 @@
       {
         "transform": "typia/lib/transform"
       }
-    ]
+    ],
+    "target": "esnext"
   },
   "ts-node": {
     "esm": true,

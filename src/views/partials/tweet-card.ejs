@@ -4,8 +4,8 @@
     <div class="card-body">
       <p class="card-title small text-muted">
         <strong><%= author.name %></strong>
-        <a class="text-decoration-none" href="https://twitter.com/<%= author.username %>">
-          <span class="text-muted hover-link">@<%= author.username %></span>
+        <a class="text-muted" href="https://twitter.com/<%= author.username %>">
+          <span>@<%= author.username %></span>
         </a>
       </p>
       <p class="card-text ws-pre-wrap"><%- text %></p>
@@ -45,7 +45,7 @@
     <div class="card-footer">
       <a class="text-decoration-none" href="https://twitter.com/<%= author.username %>/status/<%= id %>">
         <small
-          class="text-muted hover-link"><%= created_at.toLocaleDateString('en-us', { month: 'short', day: 'numeric', year: 'numeric' }) %></small>
+          class="text-muted"><%= created_at.toLocaleDateString('en-us', { month: 'short', day: 'numeric', year: 'numeric' }) %></small>
       </a>
     </div>
   </div>
