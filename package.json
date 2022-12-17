@@ -41,7 +41,7 @@
     "passport-oauth2": "^1.6.1",
     "tempy": "^3.0.0",
     "twitter-api-sdk": "^1.2.1",
-    "typescript-json": "^3.3.44",
+    "typia": "^3.4.9",
     "winston": "^3.8.2"
   }
 }

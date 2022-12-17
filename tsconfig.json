@@ -3,11 +3,20 @@
     "sourceMap": true,
     "outDir": "dist",
     "strict": true,
-    "lib": ["esnext"],
+    "lib": [
+      "esnext"
+    ],
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "node",
-    "plugins": [{ "transform": "typescript-json/lib/transform" }]
+    "plugins": [
+      {
+        "transform": "typia/lib/transform"
+      }
+    ]
   },
-  "ts-node": { "esm": true, "experimentalSpecifierResolution": "node" }
+  "ts-node": {
+    "esm": true,
+    "experimentalSpecifierResolution": "node"
+  }
 }

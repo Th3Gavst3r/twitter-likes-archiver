@@ -1,5 +1,5 @@
 import { PrismaClient, PrismaPromise, Session } from '@prisma/client';
-import { assert } from 'typescript-json';
+import { assert } from 'typia';
 import logger from '../util/logger';
 import { Token } from '../service/TwitterService';
 import { checkField } from '../util/Validation';

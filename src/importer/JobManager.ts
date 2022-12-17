@@ -5,7 +5,7 @@ import FileImporter from '../importer/FileImporter';
 import TwitterImporter from '../importer/TwitterImporter';
 import { TypedEmitter } from 'tiny-typed-emitter';
 import { getAuthClient } from '../auth/TwitterOAuth2';
-import { assert } from 'typescript-json';
+import { assert } from 'typia';
 import SessionManager from './SessionManager';
 
 export enum JobType {
