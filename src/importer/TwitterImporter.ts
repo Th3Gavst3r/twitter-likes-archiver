@@ -9,6 +9,7 @@ import {
   TwitterTweet,
   TwitterUser,
 } from '@prisma/client';
+import { Tweet } from '../service/TwitterService';
 import logger from '../util/logger';
 
 export default class TwitterImporter {
@@ -17,39 +18,135 @@ export default class TwitterImporter {
   /**
    * Creates a TwitterTweet in the client database.
    * @param tweet The tweet to import.
+   * @param mediaKeyToFileIdMap A map which is used to connect `TwitterMedia`
+   * records to their `LocalFile`s
    * @returns The resulting database record.
    */
   public createTweet(
-    tweet: TwitterTweet,
-    author: TwitterUser,
-    media: TwitterMedia[]
+    tweet: Tweet,
+    mediaKeyToFileIdMap: Map<string, Buffer>
   ): PrismaPromise<TwitterTweet> {
     return this.prisma.twitterTweet.upsert({
       where: { id: tweet.id },
       create: {
         id: tweet.id,
         text: tweet.text,
+        source: {
+          connectOrCreate: {
+            where: { name: tweet.source },
+            create: { name: tweet.source },
+          },
+        },
+        in_reply_to_user: {
+          connectOrCreate: tweet.in_reply_to_user && {
+            where: { id: tweet.in_reply_to_user.id },
+            create: {
+              id: tweet.in_reply_to_user.id,
+              name: tweet.in_reply_to_user.name,
+              username: tweet.in_reply_to_user.username,
+              created_at: new Date(tweet.in_reply_to_user.created_at),
+            },
+          },
+        },
         created_at: tweet.created_at,
         author: {
           connectOrCreate: {
-            where: { id: author.id },
-            create: author,
+            where: { id: tweet.author.id },
+            create: {
+              id: tweet.author.id,
+              name: tweet.author.name,
+              username: tweet.author.username,
+              created_at: new Date(tweet.author.created_at),
+            },
           },
         },
         media: {
-          connectOrCreate: media.map(
-            (m): Prisma.TwitterMediaCreateOrConnectWithoutTweetInput => {
-              return {
-                where: { media_key: m.media_key },
-                create: {
-                  media_key: m.media_key,
-                  type: m.type,
-                  url: m.url,
-                  file_id: m.file_id,
-                },
-              };
+          connectOrCreate: tweet.attachments.media.map(m => {
+            const fileId = mediaKeyToFileIdMap.get(m.media_key);
+            if (!fileId) {
+              throw new Error(
+                `Media item ${m.media_key} for tweet ${tweet.id} is missing a LocalFile ID`
+              );
             }
-          ),
+            return {
+              where: { media_key: m.media_key },
+              create: {
+                media_key: m.media_key,
+                type: m.type,
+                url: m.url,
+                file: {
+                  connect: {
+                    sha256: fileId,
+                  },
+                },
+              },
+            };
+          }),
+        },
+        hashtags: {
+          connectOrCreate: tweet.entities?.hashtags?.map(h => {
+            return {
+              where: {
+                tweet_id_start_end: {
+                  tweet_id: tweet.id,
+                  start: h.start,
+                  end: h.end,
+                },
+              },
+              create: {
+                start: h.start,
+                end: h.end,
+                tag: {
+                  connectOrCreate: {
+                    where: {
+                      tag: h.tag,
+                    },
+                    create: {
+                      tag: h.tag,
+                    },
+                  },
+                },
+              },
+            };
+          }),
+        },
+        mentions: {
+          connectOrCreate: tweet.entities?.mentions?.map(m => {
+            return {
+              where: {
+                tweet_id_start_end: {
+                  tweet_id: tweet.id,
+                  start: m.start,
+                  end: m.end,
+                },
+              },
+              create: {
+                start: m.start,
+                end: m.end,
+                username: m.username,
+              },
+            };
+          }),
+        },
+        urls: {
+          connectOrCreate: tweet.entities?.urls?.map(u => {
+            return {
+              where: {
+                tweet_id_start_end: {
+                  tweet_id: tweet.id,
+                  start: u.start,
+                  end: u.end,
+                },
+              },
+              create: {
+                start: u.start,
+                end: u.end,
+                url: u.url,
+                expanded_url: u.expanded_url,
+                display_url: u.display_url,
+              },
+            };
+          }),
         },
       },
       update: {},

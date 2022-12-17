@@ -1,10 +1,4 @@
-import {
-  Job,
-  PrismaClient,
-  PrismaPromise,
-  TwitterMedia,
-  TwitterUser,
-} from '@prisma/client';
+import { Job, PrismaClient, PrismaPromise, TwitterUser } from '@prisma/client';
 import TwitterService, { Tweet } from '../service/TwitterService';
 import logger from '../util/logger';
 import FileImporter from '../importer/FileImporter';
@@ -206,18 +200,14 @@ export default class JobManager extends TypedEmitter<JobManagerEvents> {
       const transaction: PrismaPromise<any>[] = [];
 
       // Download files first since we cannot do async work in a transaction
-      const tweetIdToMediaMap = await this.downloadMedia(page.tweets);
+      const mediaKeyToFileIdMap = await this.downloadMedia(page.tweets);
 
       // Construct like relationships
       const likedTweetIds: string[] = [];
       for (const tweet of page.tweets) {
         // Create tweet, associating it with an author and some media
         transaction.push(
-          this.twitterImporter.createTweet(
-            tweet,
-            tweet.author,
-            tweetIdToMediaMap.get(tweet.id) || []
-          )
+          this.twitterImporter.createTweet(tweet, mediaKeyToFileIdMap)
         );
 
         likedTweetIds.push(tweet.id);
@@ -261,31 +251,25 @@ export default class JobManager extends TypedEmitter<JobManagerEvents> {
    * @returns A map from tweet ID to insertable media records for the
    * downloaded files.
    */
-  private async downloadMedia(
-    tweets: Tweet[]
-  ): Promise<Map<string, TwitterMedia[]>> {
-    const tweetIdToMediaMap = new Map<string, TwitterMedia[]>();
+  private async downloadMedia(tweets: Tweet[]): Promise<Map<string, Buffer>> {
+    const mediaKeyToFileIdMap = new Map<string, Buffer>();
 
     // Sort from newest to oldest
     const sortedTweets = tweets
       .slice()
-      .sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+      .sort(
+        (a, b) =>
+          new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      );
     for (const tweet of sortedTweets) {
       logger.debug(`Downloading media for tweet ${tweet.id}`);
 
-      const media: TwitterMedia[] = [];
-      for (const mediaItem of tweet.media) {
+      for (const mediaItem of tweet.attachments.media) {
         const localFile = await this.fileImporter.download(mediaItem.url);
-        media.push({
-          ...mediaItem,
-          file_id: localFile.sha256,
-          tweet_id: tweet.id,
-        });
+        mediaKeyToFileIdMap.set(mediaItem.media_key, localFile.sha256);
       }
-
-      tweetIdToMediaMap.set(tweet.id, media);
     }
 
-    return tweetIdToMediaMap;
+    return mediaKeyToFileIdMap;
   }
 }

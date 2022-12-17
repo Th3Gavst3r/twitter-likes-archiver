@@ -11,24 +11,80 @@ datasource db {
 }
 
 model TwitterUser {
-  id           String               @id
-  name         String
-  username     String
-  created_at   DateTime
-  tweets       TwitterTweet[]
-  likes        TwitterLike[]
-  staged_likes TwitterLikeStaging[]
+  id             String               @id
+  name           String
+  username       String
+  created_at     DateTime
+  tweets         TwitterTweet[]       @relation("author")
+  likes          TwitterLike[]
+  staged_likes   TwitterLikeStaging[]
+  replying_users TwitterTweet[]       @relation("replying_users")
 }
 
 model TwitterTweet {
-  id           String               @id
-  text         String
-  created_at   DateTime
-  author       TwitterUser          @relation(fields: [author_id], references: [id])
-  author_id    String
-  media        TwitterMedia[]
-  likes        TwitterLike[]
-  staged_likes TwitterLikeStaging[]
+  id                  String                      @id
+  text                String
+  created_at          DateTime
+  author              TwitterUser                 @relation("author", fields: [author_id], references: [id])
+  author_id           String
+  source              TwitterTweetSource          @relation(fields: [source_id], references: [id])
+  source_id           Int
+  media               TwitterMedia[]
+  likes               TwitterLike[]
+  staged_likes        TwitterLikeStaging[]
+  in_reply_to_user    TwitterUser?                @relation("replying_users", fields: [in_reply_to_user_id], references: [id])
+  in_reply_to_user_id String?
+  hashtags            TwitterTweetHashtagEntity[]
+  mentions            TwitterTweetMentionEntity[]
+  urls                TwitterTweetUrlEntity[]
+}
+
+model TwitterTweetSource {
+  id     Int            @id @default(autoincrement())
+  name   String         @unique
+  tweets TwitterTweet[]
+}
+
+model TwitterHashtag {
+  id             Int                         @id @default(autoincrement())
+  tag            String                      @unique
+  tweet_entities TwitterTweetHashtagEntity[]
+}
+
+model TwitterTweetHashtagEntity {
+  id       Int            @id @default(autoincrement())
+  tweet    TwitterTweet   @relation(fields: [tweet_id], references: [id])
+  tweet_id String
+  start    Int
+  end      Int
+  tag      TwitterHashtag @relation(fields: [tag_id], references: [id])
+  tag_id   Int
+
+  @@unique([tweet_id, start, end])
+}
+
+model TwitterTweetMentionEntity {
+  id       Int          @id @default(autoincrement())
+  tweet    TwitterTweet @relation(fields: [tweet_id], references: [id])
+  tweet_id String
+  start    Int
+  end      Int
+  username String
+
+  @@unique([tweet_id, start, end])
+}
+
+model TwitterTweetUrlEntity {
+  id           Int          @id @default(autoincrement())
+  tweet        TwitterTweet @relation(fields: [tweet_id], references: [id])
+  tweet_id     String
+  start        Int
+  end          Int
+  url          String
+  expanded_url String?
+  display_url  String?
+
+  @@unique([tweet_id, start, end])
 }
 
 model TwitterLike {

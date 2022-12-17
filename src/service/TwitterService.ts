@@ -1,6 +1,11 @@
-import { Prisma, TwitterMedia, TwitterUser } from '@prisma/client';
+import { TwitterUser } from '@prisma/client';
 import { Client, types } from 'twitter-api-sdk';
-import { components } from 'twitter-api-sdk/dist/types';
+import {
+  components,
+  findTweetById,
+  findUserById,
+  TwitterResponse,
+} from 'twitter-api-sdk/dist/types';
 import {
   checkElementsForField,
   checkElementsForFields,
@@ -11,11 +16,25 @@ import {
 import logger from '../util/logger';
 import { OAuth2User } from 'twitter-api-sdk/dist/OAuth2User';
 
-export type Media = Omit<TwitterMedia, 'tweet_id' | 'file_id'>;
+export type User = MakeRequired<
+  TwitterResponse<findUserById>,
+  'data'
+>['data'] & { created_at: string };
 
-export type Tweet = Prisma.TwitterTweetGetPayload<{
-  include: { author: true };
-}> & { media: Media[] };
+export type Media = MakeRequired<
+  MakeRequired<TwitterResponse<findTweetById>, 'includes'>['includes'],
+  'media'
+>['media'][0] & { media_key: string; url: string };
+
+export type Tweet = TwitterResponse<findTweetById>['data'] & {
+  source: string;
+  author: User;
+  created_at: string;
+  in_reply_to_user?: User;
+  attachments: {
+    media: Media[];
+  };
+};
 
 export interface Token {
   access_token?: string;
@@ -101,8 +120,20 @@ export default class TwitterService {
     for await (const likesResult of this.client.tweets.usersIdLikedTweets(
       userId,
       {
-        expansions: ['author_id', 'attachments.media_keys'],
-        'tweet.fields': ['id', 'text', 'created_at', 'author_id'],
+        expansions: [
+          'author_id',
+          'attachments.media_keys',
+          'in_reply_to_user_id',
+        ],
+        'tweet.fields': [
+          'id',
+          'text',
+          'created_at',
+          'author_id',
+          'entities',
+          'in_reply_to_user_id',
+          'source',
+        ],
         'user.fields': ['id', 'name', 'username', 'created_at'],
         'media.fields': ['media_key', 'type', 'url', 'variants'],
         pagination_token,
@@ -126,7 +157,7 @@ export default class TwitterService {
         );
       }
 
-      const requiredTweetKeys = ['author_id', 'created_at'] as const;
+      const requiredTweetKeys = ['author_id', 'created_at', 'source'] as const;
       if (!checkElementsForFields(likesResult.data, ...requiredTweetKeys)) {
         const malformedTweets = likesResult.data.filter(
           e => !checkFields(e, ...requiredTweetKeys)
@@ -169,18 +200,35 @@ export default class TwitterService {
       const errors: Error[] = [];
       for (const tweet of likesResult.data) {
         try {
-          const author = this.mapAuthorToTweet(
-            tweet,
-            likesResult.includes.users || []
+          // Pull data out of the `includes` section
+          const author = likesResult.includes.users.find(
+            u => u.id === tweet.author_id
           );
+          if (!author) {
+            throw new Error(
+              `Could not find an author with ID ${tweet.author_id} in tweet ${tweet.id}`
+            );
+          }
+
+          let inReplyToUser;
+          if (tweet.in_reply_to_user_id) {
+            inReplyToUser = likesResult.includes.users.find(
+              u => u.id === tweet.in_reply_to_user_id
+            );
+            if (!author) {
+              throw new Error(
+                `Could not find in_reply_to_user with ID ${tweet.in_reply_to_user_id} in tweet ${tweet.id}`
+              );
+            }
+          }
 
           let media: Media[] = [];
           if (
             checkField(tweet, 'attachments') &&
             checkField(tweet.attachments, 'media_keys')
           ) {
-            media = this.mapMediaToTweet(
-              tweet,
+            media = this.findIncludedMedia(
+              tweet.attachments.media_keys,
               likesResult.includes.media || []
             );
           } else {
@@ -188,12 +236,16 @@ export default class TwitterService {
               `Tweet ${tweet.id} has no property attachments.media_keys`
             );
           }
+          logger.debug(`Tweet ${tweet.id} has ${media.length} media items`);
 
+          // Merge tweet with data from the `includes` section
           transformedTweets.push({
             ...tweet,
             author,
-            media,
-            created_at: new Date(tweet.created_at),
+            in_reply_to_user: inReplyToUser,
+            attachments: {
+              media,
+            },
           });
         } catch (e) {
           if (e instanceof Error) {
@@ -220,53 +272,26 @@ export default class TwitterService {
   }
 
   /**
-   * Pulls expanded author information out of an API response's `include`
-   * section.
-   * @param tweet The tweet whose author will be expanded.
-   * @param users The list of expanded users from the API's `include` section.
-   * @returns The tweet's author.
-   */
-  private mapAuthorToTweet(
-    tweet: MakeRequired<
-      components['schemas']['Tweet'],
-      'author_id' | 'created_at'
-    >,
-    users: MakeRequired<components['schemas']['User'], 'created_at'>[]
-  ): TwitterUser {
-    const author = users.find(u => u.id === tweet.author_id);
-    if (!author) {
-      throw new Error(
-        `Response for ${tweet.id} did not include a matching user with id ${tweet.author_id}`
-      );
-    }
-
-    return {
-      ...author,
-      created_at: new Date(author.created_at),
-    };
-  }
-
-  /**
    * Pulls expanded media information out of an API response's `include`
    * section.
    * @param tweet The tweet whose media attachments will be expanded.
    * @param media The list of expanded media from the API's `include` section.
    * @returns A list of media items which are attached to the given tweet.
    */
-  private mapMediaToTweet(
-    tweet: MakeRequired<components['schemas']['Tweet'], 'attachments'>,
+  private findIncludedMedia(
+    media_keys: string[],
     media: components['schemas']['Media'][]
   ): Media[] {
-    if (!tweet.attachments.media_keys) return [];
+    if (!media_keys) return [];
 
     const mediaItems: Media[] = [];
     const errors: Error[] = [];
-    for (const key of tweet.attachments.media_keys) {
+    for (const key of media_keys) {
       try {
         const mediaItem = media.find(m => m.media_key === key);
         if (!mediaItem) {
           throw new Error(
-            `Attachment for ${tweet.id} did not include a matching media item ${key}`
+            `Could not find an included media item with media_key ${key}`
           );
         }
 
@@ -301,9 +326,7 @@ export default class TwitterService {
         if (!checkFields(mediaItem, ...requiredMediaKeys)) {
           const missingKeys = requiredMediaKeys.filter(k => !mediaItem[k]);
           throw new Error(
-            `Tweet ${
-              tweet.id
-            } is missing the following required media keys: ${JSON.stringify(
+            `Media item is missing the following required keys: ${JSON.stringify(
               missingKeys
             )}`
           );
@@ -322,7 +345,6 @@ export default class TwitterService {
       }
     }
 
-    logger.debug(`Tweet ${tweet.id} has ${mediaItems.length} media items`);
     return mediaItems;
   }
 
