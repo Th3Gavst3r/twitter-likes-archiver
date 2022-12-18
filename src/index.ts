@@ -118,116 +118,128 @@ app.get(
   }
 );
 
-app.get('/', async (req, res) => {
-  const PAGE_SIZE = 24;
+app.get('/', async (req, res, next) => {
+  try {
+    const PAGE_SIZE = 24;
 
-  let page = 1;
-  if (req.query.page) {
-    try {
-      page = Math.max(1, Number(req.query.page));
-    } catch (e) {
-      return res.sendStatus(400);
+    let page = 1;
+    if (req.query.page) {
+      try {
+        page = Math.max(1, Number(req.query.page));
+      } catch (e) {
+        return res.sendStatus(400);
+      }
     }
-  }
 
-  const user = await prisma.twitterUser.findUnique({
-    where: { id: req.user?.id },
-  });
-  if (!user) return res.redirect('/login');
+    const user = await prisma.twitterUser.findUnique({
+      where: { id: req.user?.id },
+    });
+    if (!user) return res.redirect('/login');
 
-  const likes = await prisma.twitterLike.findMany({
-    where: { user_id: user.id },
-    include: {
-      tweet: {
-        include: {
-          author: true,
-          hashtags: {
-            include: { tag: true },
+    const likes = await prisma.twitterLike.findMany({
+      where: { user_id: user.id },
+      include: {
+        tweet: {
+          include: {
+            author: true,
+            hashtags: {
+              include: { tag: true },
+            },
+            mentions: true,
+            urls: true,
+            media: { include: { file: { include: { file_extension: true } } } },
           },
-          mentions: true,
-          urls: true,
-          media: { include: { file: { include: { file_extension: true } } } },
         },
       },
-    },
-    orderBy: { index: 'desc' },
-    take: PAGE_SIZE,
-    skip: PAGE_SIZE * (page - 1),
-  });
+      orderBy: { index: 'desc' },
+      take: PAGE_SIZE,
+      skip: PAGE_SIZE * (page - 1),
+    });
 
-  const totalLikes = await prisma.twitterLike.count({
-    where: { user_id: user.id },
-  });
+    const totalLikes = await prisma.twitterLike.count({
+      where: { user_id: user.id },
+    });
 
-  const lastPage = Math.ceil(totalLikes / PAGE_SIZE);
+    const lastPage = Math.ceil(totalLikes / PAGE_SIZE);
 
-  for (const like of likes) {
-    like.tweet.text = linkEntities(
-      like.tweet.text,
-      [...like.tweet.hashtags, ...like.tweet.mentions, ...like.tweet.urls],
-      { ignoreSelfLink: { tweetId: like.tweet.id } }
-    );
+    for (const like of likes) {
+      like.tweet.text = linkEntities(
+        like.tweet.text,
+        [...like.tweet.hashtags, ...like.tweet.mentions, ...like.tweet.urls],
+        { ignoreSelfLink: { tweetId: like.tweet.id } }
+      );
+    }
+
+    const isDownloadInProgress = jobManager.some(j => {
+      const args = JSON.parse(j.args);
+      return (
+        j.type === JobType.USER_LIKES_DOWNLOAD && args.user.id === req.user?.id
+      );
+    });
+
+    return res.render('pages/index', {
+      navigation: {
+        currentPage: page,
+        lastPage,
+      },
+      user,
+      likes,
+      isDownloadInProgress,
+    });
+  } catch (e) {
+    return next(e);
   }
-
-  const isDownloadInProgress = jobManager.some(j => {
-    const args = JSON.parse(j.args);
-    return (
-      j.type === JobType.USER_LIKES_DOWNLOAD && args.user.id === req.user?.id
-    );
-  });
-
-  return res.render('pages/index', {
-    navigation: {
-      currentPage: page,
-      lastPage,
-    },
-    user,
-    likes,
-    isDownloadInProgress,
-  });
 });
 
-app.post('/download', async (req, res) => {
-  if (!req.user) {
-    return res.redirect('/login');
-  }
+app.post('/download', async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.redirect('/login');
+    }
 
-  const user = await prisma.twitterUser.findUnique({
-    where: { id: req.user.id },
-  });
-  if (!user) {
-    return res.redirect('/login');
-  }
+    const user = await prisma.twitterUser.findUnique({
+      where: { id: req.user.id },
+    });
+    if (!user) {
+      return res.redirect('/login');
+    }
 
-  await jobManager.add(JobType.USER_LIKES_DOWNLOAD, {
-    user,
-    sessionId: req.session.id,
-  });
-  return res.redirect('/');
+    await jobManager.add(JobType.USER_LIKES_DOWNLOAD, {
+      user,
+      sessionId: req.session.id,
+    });
+    return res.redirect('/');
+  } catch (e) {
+    return next(e);
+  }
 });
 
 app.post('/logout', async (req, res, next) => {
-  // Revoke stored OAuth tokens
-  await getAuthClient({
-    token: {
-      access_token: req.user?.token?.access_token,
-    },
-  }).revokeAccessToken();
+  try {
+    // Revoke stored OAuth tokens
+    await getAuthClient({
+      token: {
+        access_token: req.user?.token?.access_token,
+      },
+    }).revokeAccessToken();
 
-  await getAuthClient({
-    token: {
-      refresh_token: req.user?.token?.refresh_token,
-    },
-  }).revokeAccessToken();
+    await getAuthClient({
+      token: {
+        refresh_token: req.user?.token?.refresh_token,
+      },
+    }).revokeAccessToken();
 
-  // Delete session
-  req.logout(async error => {
-    if (error) {
-      return next(error);
-    }
+    // Delete session
+    req.logout(async error => {
+      if (error) {
+        return next(error);
+      }
 
-    return res.redirect('/');
-  });
+      return res.redirect('/');
+    });
+  } catch (e) {
+    return next(e);
+  }
 });
 
 const port = process.env.PORT || 3000;
