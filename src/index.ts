@@ -8,7 +8,7 @@ import express from 'express';
 import expressSession from 'express-session';
 import { PrismaSessionStore } from '@quixo3/prisma-session-store';
 import passport from 'passport';
-import { getTwitterStrategy } from './auth/TwitterOAuth2';
+import { getAuthClient, getTwitterStrategy } from './auth/TwitterOAuth2';
 import SessionManager from './importer/SessionManager';
 import path from 'path';
 import { linkEntities } from './util/conversion';
@@ -196,6 +196,30 @@ app.post('/download', async (req, res) => {
     sessionId: req.session.id,
   });
   return res.redirect('/');
+});
+
+app.post('/logout', async (req, res, next) => {
+  // Revoke stored OAuth tokens
+  await getAuthClient({
+    token: {
+      access_token: req.user?.token?.access_token,
+    },
+  }).revokeAccessToken();
+
+  await getAuthClient({
+    token: {
+      refresh_token: req.user?.token?.refresh_token,
+    },
+  }).revokeAccessToken();
+
+  // Delete session
+  req.logout(async error => {
+    if (error) {
+      return next(error);
+    }
+
+    return res.redirect('/');
+  });
 });
 
 const port = process.env.PORT || 3000;

@@ -15,10 +15,10 @@ import { getEnvironmentVariableOrThrow } from '../util/Validation';
  * @returns An OAuth2 client configured with the input credentials.
  */
 export function getAuthClient(options: {
-  scopes: auth.OAuth2Scopes[];
+  scopes?: auth.OAuth2Scopes[];
   token?: {
-    access_token: string;
-    refresh_token: string;
+    access_token?: string;
+    refresh_token?: string;
     expires_at?: number;
   };
 }): auth.OAuth2User {
@@ -26,7 +26,7 @@ export function getAuthClient(options: {
     client_id: getEnvironmentVariableOrThrow('CLIENT_ID'),
     client_secret: getEnvironmentVariableOrThrow('CLIENT_SECRET'),
     callback: `${getEnvironmentVariableOrThrow('BASE_URL')}/auth/callback`,
-    scopes: options.scopes,
+    scopes: options.scopes || [],
     token: options.token,
   });
 }

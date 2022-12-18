@@ -4,8 +4,14 @@
       <a class="text-black" href="https://twitter.com/<%= user.username %>">
         <%= user.name %></a>'s likes
     </div>
-    <form class="d-flex" action="/download" method="post">
-      <input type="submit" name="upvote" value="Refresh Likes" />
-    </form>
+
+    <div class="d-flex justify-content-end">
+      <form class="me-2" action="/download" method="post">
+        <button class="btn btn-outline-secondary" type="submit">Refresh Likes</button>
+      </form>
+      <form action="/logout" method="post">
+        <button class="btn btn-outline-secondary" type="submit">Logout</button>
+      </form>
+    </div>
   </div>
 </nav>
