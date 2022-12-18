@@ -6,9 +6,16 @@
     </div>
 
     <div class="d-flex justify-content-end">
-      <form class="me-2" action="/download" method="post">
-        <button class="btn btn-outline-secondary" type="submit">Refresh Likes</button>
-      </form>
+      <div class="me-2">
+        <% if (isDownloadInProgress) { %>
+        <button class="btn btn-outline-secondary disabled" type="submit">Refreshing...</button>
+        <% } else { %>
+        <form action="/download" method="post">
+          <button class="btn btn-outline-secondary" type="submit">Refresh Likes</button>
+        </form>
+        <% } %>
+      </div>
+
       <form action="/logout" method="post">
         <button class="btn btn-outline-secondary" type="submit">Logout</button>
       </form>

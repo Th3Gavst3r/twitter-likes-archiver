@@ -30,6 +30,7 @@ export interface JobManagerEvents {
  */
 export default class JobManager extends TypedEmitter<JobManagerEvents> {
   private queue: Job[];
+  private currentJobs: Job[];
 
   constructor(
     private prisma: PrismaClient,
@@ -39,6 +40,7 @@ export default class JobManager extends TypedEmitter<JobManagerEvents> {
   ) {
     super();
     this.queue = [];
+    this.currentJobs = [];
   }
 
   /**
@@ -74,6 +76,18 @@ export default class JobManager extends TypedEmitter<JobManagerEvents> {
   }
 
   /**
+   * Searches all active and queued jobs to find if any job matches the
+   * criteria provided in the `predicate` function.
+   * @param predicate Calls the predicate for each available `Job` until the
+   * criteria matches.
+   * @returns The first `Job` which matches the `predicate`, or `undefined` if
+   * no `Job` matches.
+   */
+  public some(predicate: (job: Job) => boolean): boolean {
+    return [...this.currentJobs, ...this.queue].some(predicate);
+  }
+
+  /**
    * Adds a job to the work queue. If the queue is not already running, it is
    * automatically started.
    * @param job A fully initialized Job.
@@ -95,6 +109,8 @@ export default class JobManager extends TypedEmitter<JobManagerEvents> {
     while (this.queue.length > 0) {
       const job = this.queue.shift();
       if (!job) continue;
+
+      this.currentJobs.push(job);
 
       try {
         let jobPromise: Promise<void>;
@@ -121,6 +137,8 @@ export default class JobManager extends TypedEmitter<JobManagerEvents> {
       } catch (error) {
         this.emit('failed', job, error);
       }
+
+      this.currentJobs = this.currentJobs.filter(j => j !== job);
     }
   }
 

@@ -169,6 +169,13 @@ app.get('/', async (req, res) => {
     );
   }
 
+  const isDownloadInProgress = jobManager.some(j => {
+    const args = JSON.parse(j.args);
+    return (
+      j.type === JobType.USER_LIKES_DOWNLOAD && args.user.id === req.user?.id
+    );
+  });
+
   return res.render('pages/index', {
     navigation: {
       currentPage: page,
@@ -176,6 +183,7 @@ app.get('/', async (req, res) => {
     },
     user,
     likes,
+    isDownloadInProgress,
   });
 });
 
