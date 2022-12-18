@@ -119,6 +119,17 @@ app.get(
 );
 
 app.get('/', async (req, res) => {
+  const PAGE_SIZE = 24;
+
+  let page = 1;
+  if (req.query.page) {
+    try {
+      page = Math.max(1, Number(req.query.page));
+    } catch (e) {
+      return res.sendStatus(400);
+    }
+  }
+
   const user = await prisma.twitterUser.findUnique({
     where: { id: req.user?.id },
   });
@@ -140,8 +151,15 @@ app.get('/', async (req, res) => {
       },
     },
     orderBy: { index: 'desc' },
-    take: 24,
+    take: PAGE_SIZE,
+    skip: PAGE_SIZE * (page - 1),
   });
+
+  const totalLikes = await prisma.twitterLike.count({
+    where: { user_id: user.id },
+  });
+
+  const lastPage = Math.ceil(totalLikes / PAGE_SIZE);
 
   for (const like of likes) {
     like.tweet.text = linkEntities(
@@ -151,7 +169,11 @@ app.get('/', async (req, res) => {
     );
   }
 
-  res.render('pages/index', {
+  return res.render('pages/index', {
+    navigation: {
+      currentPage: page,
+      lastPage,
+    },
     user,
     likes,
   });
