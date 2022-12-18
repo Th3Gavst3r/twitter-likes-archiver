@@ -28,4 +28,6 @@ Rename the [`.env.example`](.env.example) file to `.env` and populate it with th
 npm start
 ```
 
+Once the server has started listening, navigate to http://localhost:3000 in your web browser.
+
 Media files will be imported to `db/client_files`.
