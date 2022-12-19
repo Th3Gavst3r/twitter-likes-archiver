@@ -8,9 +8,15 @@ import { copyFile, mkdir, rename, stat, unlink } from 'fs/promises';
 import path from 'path';
 import { fileTypeFromBuffer } from 'file-type';
 import logger from '../util/logger';
+import pLimit, { LimitFunction } from 'p-limit';
 
 export default class FileImporter {
-  constructor(private readonly prisma: PrismaClient) {}
+  private readonly MAX_DOWNLOADS: number = 10;
+  private downloadLimiter: LimitFunction;
+
+  constructor(private readonly prisma: PrismaClient) {
+    this.downloadLimiter = pLimit(this.MAX_DOWNLOADS);
+  }
 
   /**
    * Downloads content from a given URL and saves it to disk, using the SHA256
@@ -41,7 +47,7 @@ export default class FileImporter {
 
     // Begin the download
     logger.info(`Downloading content from ${url}`);
-    const response = await fetch(url);
+    const response = await this.downloadLimiter(() => fetch(url));
     if (!response.body) {
       throw new Error(`Response for ${url} did not contain a body`);
     }
@@ -114,7 +120,9 @@ export default class FileImporter {
     }
 
     // Save the file metadata
-    logger.debug(`Saving database record for ${hash}`);
+    logger.debug(
+      `Saving database record for ${hash.toString('hex')}.${fileType.ext}`
+    );
     return this.prisma.localFile.upsert({
       where: { sha256: hash },
       update: {

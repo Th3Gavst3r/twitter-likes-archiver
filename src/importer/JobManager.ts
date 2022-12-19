@@ -279,14 +279,23 @@ export default class JobManager extends TypedEmitter<JobManagerEvents> {
         (a, b) =>
           new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
+
+    const downloadPromises: Promise<void>[] = [];
     for (const tweet of sortedTweets) {
       logger.debug(`Downloading media for tweet ${tweet.id}`);
 
       for (const mediaItem of tweet.attachments.media) {
-        const localFile = await this.fileImporter.download(mediaItem.url);
-        mediaKeyToFileIdMap.set(mediaItem.media_key, localFile.sha256);
+        downloadPromises.push(
+          this.fileImporter
+            .download(mediaItem.url)
+            .then(async query => await query)
+            .then(localFile => {
+              mediaKeyToFileIdMap.set(mediaItem.media_key, localFile.sha256);
+            })
+        );
       }
     }
+    await Promise.all(downloadPromises);
 
     return mediaKeyToFileIdMap;
   }
