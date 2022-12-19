@@ -17,8 +17,8 @@
         <% const src = `${mediaItem.file_id.toString('hex')}.${mediaItem.file.file_extension.ext}` %>
         <div class="col">
           <input id="<%= mediaItem.media_key %>" class="media-preview-toggle" type="checkbox">
-          <label for="<%= mediaItem.media_key %>" class="media-expand thumbnail">
 
+          <label for="<%= mediaItem.media_key %>" class="media-expand thumbnail">
             <% if (mediaItem.type === 'photo') { %>
             <img class="thumbnail" src="<%= src %>">
             <% } else if (mediaItem.type === 'video' || mediaItem.type === 'animated_gif') { %>
@@ -28,13 +28,11 @@
 
           <label for="<%= mediaItem.media_key %>" class="media-collapse media-fullview">
             <div class="media-container">
-
               <% if (mediaItem.type === 'photo') { %>
               <img src="<%= src %>">
               <% } else if (mediaItem.type === 'video' || mediaItem.type === 'animated_gif') { %>
-              <video src="<%= src %>" controls loop></video>
+              <video src="<%= src %>" controls></video>
               <% } %>
-
             </div>
           </label>
         </div>
