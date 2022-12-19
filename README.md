@@ -1,4 +1,4 @@
-# twitter-archiver
+# twitter-likes-archiver
 
 Downloads liked tweets for local backup and storage.
 
