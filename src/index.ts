@@ -35,7 +35,7 @@ const prisma = new PrismaClient({
       // https://github.com/prisma/prisma/issues?q=is%3Aissue+label%3A%22topic%3A+Timed+out+during+query+execution%22+
       // See also for some info about write-ahead logging (which still doesn't seem to help):
       // https://github.com/prisma/prisma/issues/3303
-      url: `${process.env.DATABASE_URL}?connection_limit=1`,
+      url: `file:../db/main.db?connection_limit=1`,
     },
   },
 });
@@ -69,7 +69,7 @@ const app = express();
 // Static files
 app.set('view engine', 'ejs');
 app.set('views', path.resolve('src', 'views'));
-app.use(express.static(path.resolve('db', 'client_files')));
+app.use(express.static(path.resolve('db', 'files')));
 app.use(express.static(path.resolve('src', 'public')));
 
 // express-session configuration

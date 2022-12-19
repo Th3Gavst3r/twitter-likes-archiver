@@ -101,7 +101,7 @@ export default class FileImporter {
     const stats = await stat(tempFile);
 
     // Move the file out of temporary storage
-    const clientFilesDir = path.resolve('db', 'client_files');
+    const clientFilesDir = path.resolve('db', 'files');
     const file = path.resolve(
       clientFilesDir,
       `${hash.toString('hex')}.${fileType.ext}`

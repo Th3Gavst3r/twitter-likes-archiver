@@ -16,7 +16,6 @@ Rename the [`.env.example`](.env.example) file to `.env` and populate it with th
 
 | Variable       | Description                                                                                     |
 | -------------- | ----------------------------------------------------------------------------------------------- |
-| DATABASE_URL   | Desired location of your database file.                                                         |
 | CLIENT_ID      | Client ID for your [Twitter app](https://developer.twitter.com/en/docs/apps/overview).          |
 | CLIENT_SECRET  | Client secret for your [Twitter app](https://developer.twitter.com/en/docs/apps/overview).      |
 | SESSION_SECRET | A random secret used to secure session cookies. Can be any string.                              |
