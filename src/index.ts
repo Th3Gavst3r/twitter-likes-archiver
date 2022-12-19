@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient, TwitterLike } from '@prisma/client';
 import logger from './util/logger';
 import { getEnvironmentVariableOrThrow } from './util/Validation';
 import JobManager, { JobType } from './importer/JobManager';
@@ -136,7 +136,15 @@ app.get('/', async (req, res, next) => {
     });
     if (!user) return res.redirect('/login');
 
-    const likes = await prisma.twitterLike.findMany({
+    const totalStagedLikes = await prisma.twitterLikeStaging.count({
+      where: { user_id: user.id },
+    });
+    const totalLikes = await prisma.twitterLike.count({
+      where: { user_id: user.id },
+    });
+    const lastPage = Math.ceil((totalLikes + totalStagedLikes) / PAGE_SIZE);
+
+    const stagedLikes = await prisma.twitterLikeStaging.findMany({
       where: { user_id: user.id },
       include: {
         tweet: {
@@ -147,20 +155,40 @@ app.get('/', async (req, res, next) => {
             },
             mentions: true,
             urls: true,
-            media: { include: { file: { include: { file_extension: true } } } },
+            media: {
+              include: { file: { include: { file_extension: true } } },
+            },
           },
         },
       },
-      orderBy: { index: 'desc' },
+      orderBy: { index: 'asc' },
       take: PAGE_SIZE,
       skip: PAGE_SIZE * (page - 1),
     });
 
-    const totalLikes = await prisma.twitterLike.count({
+    const committedLikes = await prisma.twitterLike.findMany({
       where: { user_id: user.id },
+      include: {
+        tweet: {
+          include: {
+            author: true,
+            hashtags: {
+              include: { tag: true },
+            },
+            mentions: true,
+            urls: true,
+            media: {
+              include: { file: { include: { file_extension: true } } },
+            },
+          },
+        },
+      },
+      orderBy: { index: 'desc' },
+      take: PAGE_SIZE - stagedLikes.length,
+      skip: Math.max(0, PAGE_SIZE * (page - 1 - totalStagedLikes / PAGE_SIZE)),
     });
 
-    const lastPage = Math.ceil(totalLikes / PAGE_SIZE);
+    const likes = [...stagedLikes, ...committedLikes];
 
     for (const like of likes) {
       like.tweet.text = linkEntities(
