@@ -1,3 +1,6 @@
+import * as dotenv from 'dotenv';
+dotenv.config();
+
 import { PrismaClient } from '@prisma/client';
 import logger from './util/logger';
 import { getEnvironmentVariableOrThrow } from './util/Validation';
