@@ -17,11 +17,10 @@ npm install && npx prisma migrate deploy
    - Be sure to save your API Key and API Key Secret.
 
 1. Click on the gear icon to edit your app's settings.
-
 1. Under **User authentication settings** select **Set up**.
 1. Under **Type of App** select **Web App, Automated App or Bot**.
 1. In the **Callback URI / Redirect URL** input, enter `http://localhost:3000/auth/callback`.
-1. In the **Website URL** input, enter some valid website (preferably that you own).
+1. In the **Website URL** input, enter your Twitter profile URL (https://twitter.com/username).
 1. Save your changes.
 
 ### Environment variables
