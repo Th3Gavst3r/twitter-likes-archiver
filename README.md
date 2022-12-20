@@ -14,7 +14,7 @@ npm install && npx prisma migrate deploy
 
 1. Create a Twitter app [here](https://developer.twitter.com/en/portal/petition/essential/basic-info).
 
-   - Be sure to save your API Key and API Key Secret.
+   - Be sure to save your **API Key** and **API Key Secret**.
 
 1. Click on the gear icon to edit your app's settings.
 1. Under **User authentication settings** select **Set up**.
@@ -42,4 +42,4 @@ npm start
 
 Once the server has started listening, navigate to http://localhost:3000 in your web browser.
 
-Media files will be imported to `db/client_files`.
+Media files will be imported to `db/files`.
