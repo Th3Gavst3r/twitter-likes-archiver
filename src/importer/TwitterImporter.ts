@@ -26,17 +26,22 @@ export default class TwitterImporter {
     tweet: Tweet,
     mediaKeyToFileIdMap: Map<string, Buffer>
   ): PrismaPromise<TwitterTweet> {
+    let source;
+    if (tweet.source) {
+      source = {
+        connectOrCreate: {
+          where: { name: tweet.source },
+          create: { name: tweet.source },
+        },
+      };
+    }
+
     return this.prisma.twitterTweet.upsert({
       where: { id: tweet.id },
       create: {
         id: tweet.id,
         text: tweet.text,
-        source: {
-          connectOrCreate: {
-            where: { name: tweet.source },
-            create: { name: tweet.source },
-          },
-        },
+        source,
         in_reply_to_user: {
           connectOrCreate: tweet.in_reply_to_user && {
             where: { id: tweet.in_reply_to_user.id },
@@ -149,7 +154,7 @@ export default class TwitterImporter {
           }),
         },
       },
-      update: {},
+      update: { source },
     });
   }
 

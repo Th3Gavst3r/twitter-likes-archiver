@@ -27,7 +27,7 @@ export type Media = MakeRequired<
 >['media'][0] & { media_key: string; url: string };
 
 export type Tweet = TwitterResponse<findTweetById>['data'] & {
-  source: string;
+  source?: string;
   author: User;
   created_at: string;
   in_reply_to_user?: User;
@@ -157,7 +157,7 @@ export default class TwitterService {
         );
       }
 
-      const requiredTweetKeys = ['author_id', 'created_at', 'source'] as const;
+      const requiredTweetKeys = ['author_id', 'created_at'] as const;
       if (!checkElementsForFields(likesResult.data, ...requiredTweetKeys)) {
         const malformedTweets = likesResult.data.filter(
           e => !checkFields(e, ...requiredTweetKeys)

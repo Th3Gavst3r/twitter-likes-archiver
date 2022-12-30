@@ -27,8 +27,8 @@ model TwitterTweet {
   created_at          DateTime
   author              TwitterUser                 @relation("author", fields: [author_id], references: [id])
   author_id           String
-  source              TwitterTweetSource          @relation(fields: [source_id], references: [id])
-  source_id           Int
+  source              TwitterTweetSource?         @relation(fields: [source_id], references: [id])
+  source_id           Int?
   media               TwitterMedia[]
   likes               TwitterLike[]
   staged_likes        TwitterLikeStaging[]
